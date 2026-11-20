@@ -1,1 +1,20 @@
+# Web Framework (MVC)
+Flask>=3.0.3
+Werkzeug>=3.0.3
 
+# PostgreSQL Database & ORM (Compatible with Python 3.14 on Windows)
+psycopg[binary,pool]>=3.2.0
+Flask-SQLAlchemy>=3.1.1
+SQLAlchemy>=2.0.35
+
+# Authentication & Security (Password Hashing - bcrypt)
+bcrypt>=4.2.0
+
+# Cache Layer (Redis for PIN TTL Validation)
+redis>=5.0.7
+
+# Real-time WebSocket (Observer Pattern for Live Attendance Updates)
+Flask-SocketIO>=5.3.6
+
+# Environment Variables
+python-dotenv>=1.0.1
