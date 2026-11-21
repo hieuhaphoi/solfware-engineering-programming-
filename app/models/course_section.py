@@ -39,6 +39,11 @@ class CourseSection(db.Model):
 
     # Relationships
     course = db.relationship("Course", back_populates="sections")
+    lecturer = db.relationship(
+        "Lecturer",
+        back_populates="sections",
+        foreign_keys=[lecturer_id],
+    )
     enrollments = db.relationship(
         "Enrollment",
         back_populates="section",
@@ -46,15 +51,13 @@ class CourseSection(db.Model):
         passive_deletes=True,
         lazy="select",
     )
-
-    # Enable after Lecturer and AttendanceSession models are merged:
-    # lecturer = db.relationship("Lecturer", foreign_keys=[lecturer_id])
-    # attendance_sessions = db.relationship(
-    #     "AttendanceSession",
-    #     cascade="all, delete-orphan",
-    #     passive_deletes=True,
-    #     lazy="select",
-    # )
+    attendance_sessions = db.relationship(
+        "AttendanceSession",
+        back_populates="section",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        lazy="select",
+    )
 
     def to_dict(self, include_enrollments: bool = False) -> dict:
         data = {

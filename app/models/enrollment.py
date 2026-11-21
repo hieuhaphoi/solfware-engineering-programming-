@@ -44,9 +44,11 @@ class Enrollment(db.Model):
 
     # Relationships
     section = db.relationship("CourseSection", back_populates="enrollments")
-
-    # Enable after Student model is merged:
-    # student = db.relationship("Student", foreign_keys=[student_id])
+    student = db.relationship(
+        "Student",
+        back_populates="enrollments",
+        foreign_keys=[student_id],
+    )
 
     def to_dict(self) -> dict:
         return {

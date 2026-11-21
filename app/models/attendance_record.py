@@ -68,6 +68,11 @@ class AttendanceRecord(db.Model):
     )
 
     session = db.relationship("AttendanceSession", back_populates="records")
+    student = db.relationship(
+        "Student",
+        back_populates="attendance_records",
+        foreign_keys=[student_id],
+    )
 
     def update_status(
         self,

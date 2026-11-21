@@ -44,7 +44,11 @@ class AttendanceSession(db.Model):
     )
     end_time = db.Column("endtime", db.DateTime, nullable=False)
 
-    section = db.relationship("CourseSection", foreign_keys=[section_id])
+    section = db.relationship(
+        "CourseSection",
+        back_populates="attendance_sessions",
+        foreign_keys=[section_id],
+    )
 
     records = db.relationship(
         "AttendanceRecord",
@@ -54,19 +58,24 @@ class AttendanceSession(db.Model):
         lazy="select",
     )
 
-    def to_dict(self, include_records: bool = False) -> dict:
+    def to_dict(
+        self,
+        include_records: bool = False,
+        include_pin: bool = True,
+    ) -> dict:
         data = {
             "session_id": self.session_id,
             "section_id": self.section_id,
             "session_date": (
                 self.session_date.isoformat() if self.session_date else None
             ),
-            "pin_code": self.pin_code,
             "start_time": (
                 self.start_time.isoformat() if self.start_time else None
             ),
             "end_time": self.end_time.isoformat() if self.end_time else None,
         }
+        if include_pin:
+            data["pin_code"] = self.pin_code
         if include_records:
             data["records"] = [record.to_dict() for record in self.records]
         return data
