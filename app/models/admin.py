@@ -1,41 +1,61 @@
 from app.extensions.database import db
+from app.models.user import User
 
 
-class Admin(db.Model):
+class Admin(User):
+    """Administrator model inheriting from User."""
+
     __tablename__ = "admins"
 
-    adminID = db.Column("adminid", db.String(50), primary_key=True)
-
-    userID = db.Column(
+    admin_id = db.Column(
+        "adminid",
+        db.String(50),
+        primary_key=True,
+    )
+    user_id = db.Column(
         "userid",
         db.BigInteger,
-        db.ForeignKey("users.userid", ondelete="CASCADE", onupdate="CASCADE"),
+        db.ForeignKey(
+            "users.userid",
+            ondelete="CASCADE",
+            onupdate="CASCADE",
+            name="fk_admins_user",
+        ),
         unique=True,
         nullable=False,
     )
-
     role = db.Column(
         "role",
         db.String(50),
         nullable=False,
         default="Administrator",
+        server_default="Administrator",
     )
 
-    user = db.relationship("User", foreign_keys=[userID])
+    __mapper_args__ = {
+        "polymorphic_identity": "admin",
+        "inherit_condition": (user_id == User.user_id),
+    }
 
     @property
-    def admin_id(self):
-        return self.adminID
+    def adminID(self) -> str:
+        return self.admin_id
 
-    @admin_id.setter
-    def admin_id(self, value):
-        self.adminID = value
+    @adminID.setter
+    def adminID(self, value: str) -> None:
+        self.admin_id = value
 
-    @property
-    def user_id(self):
-        return self.userID
+    def to_dict(self) -> dict:
+        data = super().to_dict()
+        data.update(
+            {
+                "admin_id": self.admin_id,
+                "role": self.role,
+            }
+        )
+        return data
 
-    @user_id.setter
-    def user_id(self, value):
-        self.userID = value
+    def __repr__(self) -> str:
+        return f"<Admin {self.admin_id}: username={self.username}, role={self.role}>"
+
 
