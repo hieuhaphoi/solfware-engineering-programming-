@@ -1,1 +1,51 @@
+{% extends "base.html" %}
 
+{% block title %}Semester Overview · Attendly Admin{% endblock %}
+{% block breadcrumb %}Overview{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Semester initialization</h1>
+        <p class="page-subtitle">Create courses, open sections, assign lecturers, and import enrolled students before the semester begins.</p>
+    </div>
+    <div>
+        <span class="badge badge-info">Fall 2026</span>
+    </div>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-label">Courses created</div>
+        <div class="stat-value">4</div>
+        <div class="stat-meta">Across academic departments</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Course sections opened</div>
+        <div class="stat-value">3</div>
+        <div class="stat-meta">All sections assigned</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Lecturers assigned</div>
+        <div class="stat-value">2</div>
+        <div class="stat-meta">Dr. Maya Chen, Dr. Elias Reed</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Students imported</div>
+        <div class="stat-value">3</div>
+        <div class="stat-meta">Enrolled across active sections</div>
+    </div>
+</div>
+
+<div class="card-panel">
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+        <div>
+            <span class="badge badge-success">Authenticated as Administrator</span>
+            <h2 style="font-size: 17px; font-weight: 700; margin-top: 8px;">Welcome, {{ session.get('fullname') or session.get('username') }}</h2>
+            <p style="font-size: 13px; color: var(--text-secondary); margin-top: 2px;">
+                Admin ID: <strong>{{ session.get('profile_id') or 'A-1001' }}</strong> &middot; Email: {{ session.get('email') }}
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}

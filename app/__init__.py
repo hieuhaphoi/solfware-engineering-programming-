@@ -1,8 +1,9 @@
 import importlib
-from flask import Flask, jsonify, redirect, session, url_for
+from flask import Flask, jsonify, redirect, render_template, session, url_for
 
 from app.config import Config
 from app.extensions.database import db
+from app.services.auth_factory import role_required
 
 
 BLUEPRINT_SPECS = [
@@ -59,5 +60,26 @@ def create_app(config_class=Config) -> Flask:
     @app.route("/health")
     def health_check():
         return jsonify({"status": "ok"}), 200
+
+    # Fallback dashboard routes if role controllers haven't registered them yet
+    registered_rules = {rule.rule for rule in app.url_map.iter_rules()}
+
+    if "/admin" not in registered_rules:
+        @app.route("/admin")
+        @role_required("admin")
+        def admin_dashboard_fallback():
+            return render_template("admin/semester_overview.html")
+
+    if "/lecturer" not in registered_rules:
+        @app.route("/lecturer")
+        @role_required("lecturer")
+        def lecturer_dashboard_fallback():
+            return render_template("lecturer/assigned_sections.html")
+
+    if "/student" not in registered_rules:
+        @app.route("/student")
+        @role_required("student")
+        def student_dashboard_fallback():
+            return render_template("student/courses_checkin.html")
 
     return app

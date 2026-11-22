@@ -1,1 +1,125 @@
+{% extends "base.html" %}
 
+{% block title %}Sign in · Attendly | Westbridge University{% endblock %}
+
+{% block body %}
+<div class="auth-viewport">
+    <div class="auth-card">
+        <!-- Brand Header (Matches Figma Desktop & Mobile Login) -->
+        <div class="auth-brand">
+            <div class="auth-logo-box">
+                <!-- Desktop camera/badge icon -->
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="5" width="18" height="14" rx="3"></rect>
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M16.5 8.5h.01"></path>
+                </svg>
+                <!-- Mobile 'A' monogram -->
+                <span class="auth-logo-mobile-letter">A</span>
+            </div>
+            <div class="auth-brand-title">Attendly</div>
+            <div class="auth-brand-subtitle">WESTBRIDGE UNIVERSITY</div>
+        </div>
+
+        <!-- Dynamic Heading for Desktop ("Sign in") & Mobile ("Welcome back") -->
+        <div class="auth-heading">
+            <h1 class="desktop-title">Sign in</h1>
+            <p class="desktop-subtitle">Student Attendance Management System</p>
+            <h1 class="mobile-title">Welcome back</h1>
+            <p class="mobile-subtitle">Sign in to check in to your class</p>
+        </div>
+
+        <!-- Flash Notifications -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-container">
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}" role="alert">
+                            <span>{{ message }}</span>
+                            <button type="button" class="alert-close" onclick="this.parentElement.remove()" aria-label="Close">&times;</button>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <!-- Login Form -->
+        <form method="POST" action="{{ url_for('auth.login') }}" id="loginForm" novalidate>
+            <div class="form-group">
+                <label for="username" class="form-label">Username</label>
+                <div class="input-wrapper">
+                    <input
+                        type="text"
+                        id="username"
+                        name="username"
+                        class="form-control"
+                        placeholder="Enter your username"
+                        value="{{ request.form.get('username', '') }}"
+                        autocomplete="username"
+                        required
+                        autofocus
+                    >
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="password" class="form-label">Password</label>
+                <div class="input-wrapper">
+                    <input
+                        type="password"
+                        id="password"
+                        name="password"
+                        class="form-control has-trailing-icon"
+                        placeholder="Enter your password"
+                        autocomplete="current-password"
+                        required
+                    >
+                    <button
+                        type="button"
+                        class="password-toggle-btn"
+                        id="togglePasswordBtn"
+                        aria-label="Toggle password visibility"
+                        title="Show / Hide password"
+                    >
+                        <svg id="eyeOpenIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                            <circle cx="12" cy="12" r="3"></circle>
+                        </svg>
+                        <svg id="eyeClosedIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                            <line x1="1" y1="1" x2="23" y2="23"></line>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-block auth-submit-btn">
+                Sign in
+            </button>
+
+            <div class="auth-footer-links">
+                <a href="{{ url_for('auth.reset_password') }}">Forgot password?</a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Quick Demo Accounts Helper for Testing Step 4 Role Redirection -->
+    <div class="demo-helper">
+        <div class="demo-helper-title">
+            <span>Demo Accounts (Click to autofill)</span>
+            <span style="color: var(--text-muted); font-weight: 400;">Pass: password123</span>
+        </div>
+        <div class="demo-chips">
+            <button type="button" class="demo-chip" onclick="fillDemoAccount('jamie.lee', 'password123')">
+                <strong>Admin:</strong> jamie.lee
+            </button>
+            <button type="button" class="demo-chip" onclick="fillDemoAccount('maya.chen', 'password123')">
+                <strong>Lecturer:</strong> maya.chen
+            </button>
+            <button type="button" class="demo-chip" onclick="fillDemoAccount('alex.morgan', 'password123')">
+                <strong>Student:</strong> alex.morgan
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}

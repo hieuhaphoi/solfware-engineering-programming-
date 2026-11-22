@@ -1,1 +1,70 @@
+{% extends "base.html" %}
 
+{% block title %}My Courses & PIN Check-in · Attendly Student{% endblock %}
+
+{% block student_content %}
+<div style="margin-bottom: 18px;">
+    <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; color: var(--text-muted); text-transform: uppercase;">
+        FALL 2026 &middot; STUDENT ID: {{ session.get('profile_id') or '2026001' }}
+    </div>
+    <h1 style="font-size: 26px; font-weight: 700; letter-spacing: -0.02em; margin-top: 2px;">
+        Hi, {{ (session.get('fullname') or session.get('username') or 'Student').split(' ')[0] }}.
+    </h1>
+    <p style="font-size: 13px; color: var(--text-secondary);">A little presence goes a long way.</p>
+</div>
+
+<!-- Live Session PIN Check-in Card (Matches Figma Student - Courses and PIN check-in) -->
+<div style="border-radius: var(--radius-xl); overflow: hidden; box-shadow: var(--shadow-card); border: 1px solid var(--border-color); margin-bottom: 24px; background: var(--bg-surface);">
+    <div style="background-color: var(--dark-navy); color: #FFFFFF; padding: 20px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+            <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; color: #C7CCF8;">CS201 &middot; SECTION A</span>
+            <span class="badge badge-success">&bull; Session open</span>
+        </div>
+        <h2 style="font-size: 20px; font-weight: 700;">Database Systems</h2>
+        <p style="font-size: 12.5px; color: #A6ACBE; margin-top: 4px;">Dr. Maya Chen &middot; Room B-204</p>
+    </div>
+
+    <div style="padding: 20px;">
+        <h3 style="font-size: 15px; font-weight: 700; margin-bottom: 4px;">You're here. Make it count.</h3>
+        <p style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 16px;">
+            Enter the 6-digit PIN shown by your lecturer. A valid PIN marks PRESENT; until then, ABSENT.
+        </p>
+
+        <form method="POST" action="/attendance/check-in">
+            <div class="form-group">
+                <input
+                    type="text"
+                    name="pin_code"
+                    maxlength="6"
+                    pattern="[0-9]{4,6}"
+                    class="form-control"
+                    placeholder="4 8 2 7 6 1"
+                    style="text-align: center; font-size: 20px; font-weight: 700; letter-spacing: 0.35em; height: 50px;"
+                    required
+                >
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">
+                &#10003; Confirm attendance
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- My Courses List -->
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+    <h2 style="font-size: 17px; font-weight: 700;">My courses</h2>
+    <span style="font-size: 12px; color: var(--text-muted);">Fall 2026 &middot; 3 courses</span>
+</div>
+
+<div class="card-panel" style="padding: 16px; margin-bottom: 12px;">
+    <div style="font-size: 11px; font-weight: 700; color: var(--primary); letter-spacing: 0.04em;">CS105 &middot; SECTION B</div>
+    <div style="font-size: 15.5px; font-weight: 700; margin: 4px 0 2px;">Programming Fundamentals</div>
+    <div style="font-size: 12.5px; color: var(--text-secondary);">Dr. Maya Chen &middot; Room A-102</div>
+</div>
+
+<div class="card-panel" style="padding: 16px; margin-bottom: 12px;">
+    <div style="font-size: 11px; font-weight: 700; color: var(--primary); letter-spacing: 0.04em;">MA202 &middot; SECTION A</div>
+    <div style="font-size: 15.5px; font-weight: 700; margin: 4px 0 2px;">Discrete Mathematics</div>
+    <div style="font-size: 12.5px; color: var(--text-secondary);">Dr. Elias Reed &middot; Room C-105</div>
+</div>
+{% endblock %}
