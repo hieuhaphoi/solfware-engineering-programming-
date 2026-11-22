@@ -3,6 +3,7 @@ from flask import Flask, jsonify, redirect, render_template, session, url_for
 
 from app.config import Config
 from app.extensions.database import db
+from app.extensions.redis_client import redis_client
 from app.services.auth_factory import role_required
 
 
@@ -37,6 +38,7 @@ def create_app(config_class=Config) -> Flask:
     app.config.from_object(config_class)
 
     db.init_app(app)
+    redis_client.init_app(app)
 
     with app.app_context():
         importlib.import_module("app.models")

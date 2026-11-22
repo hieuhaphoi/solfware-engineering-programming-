@@ -71,13 +71,13 @@ class RedisClientSingleton:
             return
         self._client: Optional[redis.Redis] = None
         self._memory_fallback = _MemoryTTLStore()
-        self._redis_uri: str = Config.REDIS_URI
+        self._redis_uri: str = getattr(Config, "REDIS_URI", getattr(Config, "REDIS_URL", "redis://localhost:6379/0"))
         self._allow_fallback: bool = True
         self._connect(self._redis_uri)
         self._initialized = True
 
     def init_app(self, app) -> None:
-        uri = app.config.get("REDIS_URI", Config.REDIS_URI)
+        uri = app.config.get("REDIS_URI") or app.config.get("REDIS_URL") or self._redis_uri
         self._allow_fallback = app.config.get("REDIS_ALLOW_FALLBACK", True)
         self._redis_uri = uri
         self._connect(uri)

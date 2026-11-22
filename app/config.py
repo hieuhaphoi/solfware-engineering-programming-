@@ -36,6 +36,7 @@ class Config:
     REDIS_URL = os.getenv(
         "REDIS_URL", f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
     )
+    REDIS_URI = os.getenv("REDIS_URI", REDIS_URL)
 
     # Attendance Business Rules (Section I & III)
     PIN_LENGTH = int(os.getenv("PIN_LENGTH", 6))
