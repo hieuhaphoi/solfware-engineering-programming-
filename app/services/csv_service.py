@@ -36,6 +36,17 @@ class CSVService:
         return key
 
     @staticmethod
+    def _normalize_phone(raw_phone):
+        cleaned = re.sub(r"[\s\-\.]", "", (raw_phone or "").strip())
+        if not cleaned:
+            return None, None
+        if cleaned.startswith("+84"):
+            cleaned = "0" + cleaned[3:]
+        if len(cleaned) > 11:
+            return None, "Phone number must not exceed 11 characters."
+        return cleaned, None
+
+    @staticmethod
     def _read_text(file_or_text):
         if isinstance(file_or_text, str):
             return file_or_text
@@ -55,7 +66,6 @@ class CSVService:
         if not text:
             return []
 
-        # Tự đoán dấu phẩy hoặc chấm phẩy (Excel hay xuất bằng ;)
         try:
             dialect = csv.Sniffer().sniff(text[:2048], delimiters=",;")
         except csv.Error:
@@ -101,15 +111,24 @@ class CSVService:
             result["errors"].append({"row": 0, "error": "CSV file is empty or invalid."})
             return result
 
-        if target_section and not CourseSection.query.filter_by(section_id=target_section).first():
-            result["errors"].append({"row": 0, "error": f"Section '{target_section}' not found."})
-            return result
+        sec_tbl = CourseSection.__table__
+        stu_tbl = Student.__table__
+        usr_tbl = User.__table__
+        enr_tbl = Enrollment.__table__
+
+        if target_section:
+            found_sec = db.session.execute(
+                db.select(sec_tbl.c.sectionid).where(sec_tbl.c.sectionid == target_section)
+            ).scalar_one_or_none()
+            if not found_sec:
+                result["errors"].append({"row": 0, "error": f"Section '{target_section}' not found."})
+                return result
 
         for idx, row in enumerate(rows, start=2):
             sid = row.get("student_id", "").strip()
             fullname = row.get("fullname", "").strip()
             email = row.get("email", "").strip().lower()
-            phone = row.get("phone", "").strip()[:15] or None
+            phone, phone_err = cls._normalize_phone(row.get("phone", ""))
             username = (row.get("username", "").strip() or sid).lower()
             password = row.get("password", "").strip() or fallback_pw
             sec_id = target_section or (row.get("section_id", "").strip() or None)
@@ -117,16 +136,20 @@ class CSVService:
             if not sid:
                 result["errors"].append({"row": idx, "error": "Missing student_id."})
                 continue
+            if len(sid) > 50:
+                result["errors"].append({"row": idx, "error": f"Student ID '{sid}' exceeds 50 characters."})
+                continue
 
-            # Dùng savepoint để dòng nào lỗi thì bỏ qua dòng đó, không rollback cả file
+            # Dùng Core query khi check tồn tại để không nạp User vào Identity Map (tránh collision)
             try:
                 with db.session.begin_nested():
-                    student = Student.query.filter_by(student_id=sid).first()
-                    if not student and email:
-                        student = Student.query.filter(func.lower(Student.email) == email).first()
+                    existing_sid = db.session.execute(
+                        db.select(stu_tbl.c.studentid).where(stu_tbl.c.studentid == sid)
+                    ).scalar_one_or_none()
 
-                    if student:
+                    if existing_sid:
                         result["existing_students"] += 1
+                        target_sid = existing_sid
                     else:
                         if not fullname or not email:
                             result["errors"].append({"row": idx, "error": f"Student '{sid}' needs fullname and email."})
@@ -134,11 +157,22 @@ class CSVService:
                         if not EMAIL_RE.match(email):
                             result["errors"].append({"row": idx, "error": f"Invalid email '{email}'."})
                             continue
+                        if len(email) > 50 or len(username) > 50:
+                            result["errors"].append({"row": idx, "error": f"Username or email exceeds 50 characters at '{sid}'."})
+                            continue
+                        if phone_err:
+                            result["errors"].append({"row": idx, "error": f"{phone_err} (student '{sid}')"})
+                            continue
 
-                        existed_user = User.query.filter(
-                            or_(func.lower(User.username) == username, func.lower(User.email) == email)
-                        ).first()
-                        if existed_user:
+                        dup_uid = db.session.execute(
+                            db.select(usr_tbl.c.userid).where(
+                                or_(
+                                    func.lower(usr_tbl.c.username) == username,
+                                    func.lower(usr_tbl.c.email) == email,
+                                )
+                            )
+                        ).scalar_one_or_none()
+                        if dup_uid is not None:
                             result["errors"].append({"row": idx, "error": f"Duplicate username/email at '{sid}'."})
                             continue
 
@@ -148,23 +182,33 @@ class CSVService:
                             email=email,
                             fullname=fullname,
                             phone=phone,
-                            status="ACTIVE",
+                            status="Active",
                         )
                         student.set_password(password)
                         db.session.add(student)
                         db.session.flush()
                         result["created_students"] += 1
+                        target_sid = student.student_id
 
-                    # Nếu có truyền mã lớp thì gán luôn sinh viên vào lớp đó
+                    # Nếu có mã lớp thì gán luôn sinh viên vào lớp đó
                     if sec_id:
-                        if not CourseSection.query.filter_by(section_id=sec_id).first():
+                        sec_exists = db.session.execute(
+                            db.select(sec_tbl.c.sectionid).where(sec_tbl.c.sectionid == sec_id)
+                        ).scalar_one_or_none()
+                        if not sec_exists:
                             result["errors"].append({"row": idx, "error": f"Section '{sec_id}' not found."})
                             continue
-                        existed_enroll = Enrollment.query.filter_by(student_id=student.student_id, section_id=sec_id).first()
+
+                        existed_enroll = db.session.execute(
+                            db.select(enr_tbl.c.studentid).where(
+                                enr_tbl.c.studentid == target_sid,
+                                enr_tbl.c.sectionid == sec_id,
+                            )
+                        ).scalar_one_or_none()
                         if existed_enroll:
                             result["already_enrolled"] += 1
                         else:
-                            db.session.add(Enrollment(student_id=student.student_id, section_id=sec_id, enroll_date=date.today()))
+                            db.session.add(Enrollment(student_id=target_sid, section_id=sec_id, enroll_date=date.today()))
                             result["enrolled"] += 1
             except IntegrityError:
                 result["errors"].append({"row": idx, "error": f"Database conflict for '{sid}'."})

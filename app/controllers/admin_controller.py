@@ -1,3 +1,4 @@
+import re
 from datetime import date
 
 from flask import Blueprint, Response, flash, jsonify, redirect, render_template, request, session, url_for
@@ -11,6 +12,14 @@ from app.services.csv_service import CSVService
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
+# Chuẩn hóa trạng thái khớp đúng CHECK (status IN ('Active', 'Locked', 'Pending')) của PostgreSQL
+STATUS_MAP = {
+    "active": "Active",
+    "locked": "Locked",
+    "inactive": "Locked",
+    "pending": "Pending",
+}
+
 
 def _wants_json():
     return request.is_json or request.accept_mimetypes.best == "application/json"
@@ -21,12 +30,28 @@ def _get_data():
 
 
 def _reply(ok, msg, code=200, next_url=None, cat="info", extra=None):
-    # Trả JSON nếu gọi bằng API, còn gọi từ form HTML thì flash + redirect
     if _wants_json():
         return jsonify({"success": ok, "message": msg, **(extra or {})}), code
     if msg:
         flash(msg, cat)
     return redirect(next_url or url_for("admin.dashboard"))
+
+
+def _normalize_status(raw, default="Active"):
+    if raw is None or str(raw).strip() == "":
+        return default
+    return STATUS_MAP.get(str(raw).strip().lower())
+
+
+def _normalize_phone(raw_phone):
+    cleaned = re.sub(r"[\s\-\.]", "", (raw_phone or "").strip())
+    if not cleaned:
+        return None, None
+    if cleaned.startswith("+84"):
+        cleaned = "0" + cleaned[3:]
+    if len(cleaned) > 11:
+        return None, "Phone number must not exceed 11 characters."
+    return cleaned, None
 
 
 def _format_user(obj, role_name):
@@ -45,22 +70,42 @@ def _format_user(obj, role_name):
     }
 
 
+def _evict_mismatched_user(user_id, target_model):
+    # Gỡ bản ghi User cùng user_id khác class khỏi Identity Map trước khi load lớp con
+    for obj in list(db.session.identity_map.values()):
+        if isinstance(obj, User) and getattr(obj, "user_id", None) == user_id and type(obj) is not target_model:
+            db.session.expunge(obj)
+
+
 def _find_user(user_id):
-    for role_name, model in (("admin", Admin), ("lecturer", Lecturer), ("student", Student)):
-        item = model.query.filter_by(user_id=user_id).first()
-        if item:
-            return item, role_name
-    user = User.query.filter_by(user_id=user_id).first()
-    return user, ("user" if user else None)
+    # Xác định bảng con bằng Core query trước để tránh SQLAlchemy Polymorphic Identity Map Collision
+    checks = (
+        ("admin", Admin, Admin.__table__.c.adminid, Admin.__table__.c.userid),
+        ("lecturer", Lecturer, Lecturer.__table__.c.lecturerid, Lecturer.__table__.c.userid),
+        ("student", Student, Student.__table__.c.studentid, Student.__table__.c.userid),
+    )
+    for role_name, model, pk_col, uid_col in checks:
+        pk_val = db.session.execute(db.select(pk_col).where(uid_col == user_id)).scalar_one_or_none()
+        if pk_val is not None:
+            _evict_mismatched_user(user_id, model)
+            return db.session.query(model).filter(pk_col == pk_val).first(), role_name
+
+    uid_exists = db.session.execute(
+        db.select(User.__table__.c.userid).where(User.__table__.c.userid == user_id)
+    ).scalar_one_or_none()
+    if uid_exists is not None:
+        _evict_mismatched_user(user_id, User)
+        return db.session.query(User).filter(User.user_id == user_id).first(), "user"
+    return None, None
 
 
 def _auto_id(role_name, model, col_name):
-    # Tự sinh mã AD0001 / GV0001 / SV0001 nếu admin bỏ trống ô mã
     prefix = {"admin": "AD", "lecturer": "GV", "student": "SV"}[role_name]
-    num = model.query.count() + 1
+    col = model.__table__.c[col_name]
+    num = db.session.execute(db.select(func.count()).select_from(model.__table__)).scalar() + 1
     while True:
         code = f"{prefix}{num:04d}"
-        if not model.query.filter(getattr(model, col_name) == code).first():
+        if db.session.execute(db.select(col).where(col == code)).scalar_one_or_none() is None:
             return code
         num += 1
 
@@ -72,13 +117,13 @@ def _auto_id(role_name, model, col_name):
 @role_required("admin")
 def dashboard():
     stats = {
-        "total_users": User.query.count(),
-        "total_admins": Admin.query.count(),
-        "total_lecturers": Lecturer.query.count(),
-        "total_students": Student.query.count(),
-        "total_courses": Course.query.count(),
-        "total_sections": CourseSection.query.count(),
-        "total_enrollments": Enrollment.query.count(),
+        "total_users": db.session.execute(db.select(func.count()).select_from(User.__table__)).scalar(),
+        "total_admins": db.session.execute(db.select(func.count()).select_from(Admin.__table__)).scalar(),
+        "total_lecturers": db.session.execute(db.select(func.count()).select_from(Lecturer.__table__)).scalar(),
+        "total_students": db.session.execute(db.select(func.count()).select_from(Student.__table__)).scalar(),
+        "total_courses": db.session.execute(db.select(func.count()).select_from(Course.__table__)).scalar(),
+        "total_sections": db.session.execute(db.select(func.count()).select_from(CourseSection.__table__)).scalar(),
+        "total_enrollments": db.session.execute(db.select(func.count()).select_from(Enrollment.__table__)).scalar(),
     }
     courses = Course.query.order_by(Course.course_id.asc()).limit(10).all()
     sections = CourseSection.query.order_by(CourseSection.semester.desc(), CourseSection.section_id.asc()).limit(10).all()
@@ -99,7 +144,8 @@ def dashboard():
 @role_required("admin")
 def list_users():
     role_filter = (request.args.get("role") or "").strip().lower()
-    status_filter = (request.args.get("status") or "").strip().upper()
+    raw_status = (request.args.get("status") or "").strip()
+    status_filter = _normalize_status(raw_status, default="") if raw_status else ""
     q = (request.args.get("q") or "").strip().lower()
 
     admins = Admin.query.order_by(Admin.user_id.desc()).all()
@@ -111,7 +157,7 @@ def list_users():
         if role_filter and role_filter != role_name:
             continue
         for item in group:
-            if status_filter and (item.status or "").upper() != status_filter:
+            if status_filter and (item.status or "").lower() != status_filter.lower():
                 continue
             info = _format_user(item, role_name)
             if q and q not in f"{info['username']} {info['email']} {info['fullname']} {info['profile_id']}".lower():
@@ -128,7 +174,7 @@ def list_users():
         admins=admins,
         lecturers=lecturers,
         students=students,
-        filters={"role": role_filter, "status": status_filter, "q": q},
+        filters={"role": role_filter, "status": status_filter or raw_status, "q": q},
     )
 
 
@@ -141,32 +187,49 @@ def create_user():
     email = (data.get("email") or "").strip().lower()
     password = (data.get("password") or "").strip()
     fullname = (data.get("fullname") or data.get("full_name") or "").strip()
-    phone = (data.get("phone") or "").strip()[:15] or None
-    status_val = (data.get("status") or "ACTIVE").strip().upper()
+    status_val = _normalize_status(data.get("status"), default="Active")
     back = url_for("admin.list_users")
 
     if role not in {"admin", "lecturer", "student"}:
         return _reply(False, "Invalid role.", 400, back, "danger")
+    if not status_val:
+        return _reply(False, "Invalid status. Must be Active, Locked, or Pending.", 400, back, "danger")
     if not username or not email or not password:
         return _reply(False, "Username, email, and password are required.", 400, back, "danger")
+    if len(username) > 50 or len(email) > 50:
+        return _reply(False, "Username and email must not exceed 50 characters.", 400, back, "danger")
 
-    dup = User.query.filter(or_(func.lower(User.username) == username.lower(), func.lower(User.email) == email)).first()
-    if dup:
+    usr_tbl = User.__table__
+    dup_uid = db.session.execute(
+        db.select(usr_tbl.c.userid).where(
+            or_(func.lower(usr_tbl.c.username) == username.lower(), func.lower(usr_tbl.c.email) == email)
+        )
+    ).scalar_one_or_none()
+    if dup_uid is not None:
         return _reply(False, "Username or email already exists.", 409, back, "danger")
 
     if role == "admin":
-        aid = (data.get("admin_id") or data.get("profile_id") or "").strip() or _auto_id("admin", Admin, "admin_id")
-        if Admin.query.filter_by(admin_id=aid).first():
+        aid = (data.get("admin_id") or data.get("profile_id") or "").strip() or _auto_id("admin", Admin, "adminid")
+        if db.session.execute(db.select(Admin.__table__.c.adminid).where(Admin.__table__.c.adminid == aid)).scalar_one_or_none():
             return _reply(False, f"Admin ID '{aid}' already exists.", 409, back, "danger")
-        user = Admin(admin_id=aid, role=(data.get("admin_role") or "SYSTEM_ADMIN").strip(), username=username, email=email, status=status_val)
+        user = Admin(
+            admin_id=aid,
+            role=(data.get("admin_role") or "Administrator").strip(),
+            username=username,
+            email=email,
+            status=status_val,
+        )
     elif role == "lecturer":
-        lid = (data.get("lecturer_id") or data.get("profile_id") or "").strip() or _auto_id("lecturer", Lecturer, "lecturer_id")
-        if Lecturer.query.filter_by(lecturer_id=lid).first():
+        lid = (data.get("lecturer_id") or data.get("profile_id") or "").strip() or _auto_id("lecturer", Lecturer, "lecturerid")
+        if db.session.execute(db.select(Lecturer.__table__.c.lecturerid).where(Lecturer.__table__.c.lecturerid == lid)).scalar_one_or_none():
             return _reply(False, f"Lecturer ID '{lid}' already exists.", 409, back, "danger")
         user = Lecturer(lecturer_id=lid, fullname=fullname or username, username=username, email=email, status=status_val)
     else:
-        sid = (data.get("student_id") or data.get("profile_id") or "").strip() or _auto_id("student", Student, "student_id")
-        if Student.query.filter_by(student_id=sid).first():
+        phone, phone_err = _normalize_phone(data.get("phone", ""))
+        if phone_err:
+            return _reply(False, phone_err, 400, back, "danger")
+        sid = (data.get("student_id") or data.get("profile_id") or "").strip() or _auto_id("student", Student, "studentid")
+        if db.session.execute(db.select(Student.__table__.c.studentid).where(Student.__table__.c.studentid == sid)).scalar_one_or_none():
             return _reply(False, f"Student ID '{sid}' already exists.", 409, back, "danger")
         user = Student(student_id=sid, fullname=fullname or username, phone=phone, username=username, email=email, status=status_val)
 
@@ -192,16 +255,29 @@ def update_user(user_id):
     data = _get_data()
     new_email = (data.get("email") or "").strip().lower()
     if new_email and new_email != (user.email or "").lower():
-        if User.query.filter(func.lower(User.email) == new_email, User.user_id != user_id).first():
+        if len(new_email) > 50:
+            return _reply(False, "Email must not exceed 50 characters.", 400, back, "danger")
+        usr_tbl = User.__table__
+        dup = db.session.execute(
+            db.select(usr_tbl.c.userid).where(func.lower(usr_tbl.c.email) == new_email, usr_tbl.c.userid != user_id)
+        ).scalar_one_or_none()
+        if dup is not None:
             return _reply(False, "Email already in use.", 409, back, "danger")
         user.email = new_email
 
     if data.get("status"):
-        user.status = str(data["status"]).strip().upper()
+        status_val = _normalize_status(data["status"], default=None)
+        if not status_val:
+            return _reply(False, "Invalid status. Must be Active, Locked, or Pending.", 400, back, "danger")
+        user.status = status_val
+
     if role in {"lecturer", "student"} and (data.get("fullname") or data.get("full_name")):
         user.fullname = (data.get("fullname") or data.get("full_name")).strip()
     if role == "student" and "phone" in data:
-        user.phone = (data.get("phone") or "").strip()[:15] or None
+        phone, phone_err = _normalize_phone(data.get("phone", ""))
+        if phone_err:
+            return _reply(False, phone_err, 400, back, "danger")
+        user.phone = phone
     if role == "admin" and data.get("admin_role"):
         user.role = str(data["admin_role"]).strip()
     if (data.get("password") or "").strip():
@@ -227,7 +303,7 @@ def toggle_user_status(user_id):
     if not user:
         return _reply(False, "User not found.", 404, back, "danger")
 
-    user.status = "INACTIVE" if (user.status or "").upper() == "ACTIVE" else "ACTIVE"
+    user.status = "Locked" if (user.status or "").lower() == "active" else "Active"
     db.session.commit()
     return _reply(True, f"Changed '{user.username}' to {user.status}.", 200, back, "success", {"user": _format_user(user, role or "user")})
 
@@ -284,7 +360,7 @@ def create_course():
 
     if not cid or not name or credits <= 0:
         return _reply(False, "Course ID, name, and positive credits are required.", 400, back, "danger")
-    if Course.query.filter_by(course_id=cid).first():
+    if db.session.execute(db.select(Course.__table__.c.courseid).where(Course.__table__.c.courseid == cid)).scalar_one_or_none():
         return _reply(False, f"Course '{cid}' already exists.", 409, back, "danger")
 
     course = Course(course_id=cid, course_name=name, credits=credits)
@@ -392,11 +468,11 @@ def create_section():
 
     if not sid or not cid or not name or not semester:
         return _reply(False, "Section ID, course, name, and semester are required.", 400, back, "danger")
-    if CourseSection.query.filter_by(section_id=sid).first():
+    if db.session.execute(db.select(CourseSection.__table__.c.sectionid).where(CourseSection.__table__.c.sectionid == sid)).scalar_one_or_none():
         return _reply(False, f"Section '{sid}' already exists.", 409, back, "danger")
-    if not Course.query.filter_by(course_id=cid).first():
+    if not db.session.execute(db.select(Course.__table__.c.courseid).where(Course.__table__.c.courseid == cid)).scalar_one_or_none():
         return _reply(False, f"Course '{cid}' not found.", 404, back, "danger")
-    if lid and not Lecturer.query.filter_by(lecturer_id=lid).first():
+    if lid and not db.session.execute(db.select(Lecturer.__table__.c.lecturerid).where(Lecturer.__table__.c.lecturerid == lid)).scalar_one_or_none():
         return _reply(False, f"Lecturer '{lid}' not found.", 404, back, "danger")
 
     section = CourseSection(section_id=sid, course_id=cid, lecturer_id=lid, section_name=name, semester=semester, room=room)
@@ -416,12 +492,12 @@ def update_section(section_id):
     data = _get_data()
     if data.get("course_id"):
         cid = str(data["course_id"]).strip()
-        if not Course.query.filter_by(course_id=cid).first():
+        if not db.session.execute(db.select(Course.__table__.c.courseid).where(Course.__table__.c.courseid == cid)).scalar_one_or_none():
             return _reply(False, f"Course '{cid}' not found.", 404, back, "danger")
         section.course_id = cid
     if "lecturer_id" in data:
         lid = (data.get("lecturer_id") or "").strip() or None
-        if lid and not Lecturer.query.filter_by(lecturer_id=lid).first():
+        if lid and not db.session.execute(db.select(Lecturer.__table__.c.lecturerid).where(Lecturer.__table__.c.lecturerid == lid)).scalar_one_or_none():
             return _reply(False, f"Lecturer '{lid}' not found.", 404, back, "danger")
         section.lecturer_id = lid
     if data.get("section_name"):
@@ -456,7 +532,7 @@ def delete_section(section_id):
 @admin_bp.route("/sections/<string:section_id>/enrollments", methods=["GET"])
 @role_required("admin")
 def list_section_enrollments(section_id):
-    if not CourseSection.query.filter_by(section_id=section_id).first():
+    if not db.session.execute(db.select(CourseSection.__table__.c.sectionid).where(CourseSection.__table__.c.sectionid == section_id)).scalar_one_or_none():
         return _reply(False, "Section not found.", 404, url_for("admin.list_sections"), "danger")
 
     items = Enrollment.query.filter_by(section_id=section_id).order_by(Enrollment.student_id.asc()).all()
@@ -475,7 +551,7 @@ def list_section_enrollments(section_id):
 @role_required("admin")
 def enroll_students(section_id):
     back = url_for("admin.list_sections")
-    if not CourseSection.query.filter_by(section_id=section_id).first():
+    if not db.session.execute(db.select(CourseSection.__table__.c.sectionid).where(CourseSection.__table__.c.sectionid == section_id)).scalar_one_or_none():
         return _reply(False, "Section not found.", 404, back, "danger")
 
     data = _get_data()
@@ -490,12 +566,14 @@ def enroll_students(section_id):
     if not student_ids:
         return _reply(False, "Select at least one student.", 400, back, "danger")
 
+    stu_tbl = Student.__table__
+    enr_tbl = Enrollment.__table__
     added, skipped, missing = 0, 0, []
     for sid in student_ids:
-        if not Student.query.filter_by(student_id=sid).first():
+        if not db.session.execute(db.select(stu_tbl.c.studentid).where(stu_tbl.c.studentid == sid)).scalar_one_or_none():
             missing.append(sid)
             continue
-        if Enrollment.query.filter_by(student_id=sid, section_id=section_id).first():
+        if db.session.execute(db.select(enr_tbl.c.studentid).where(enr_tbl.c.studentid == sid, enr_tbl.c.sectionid == section_id)).scalar_one_or_none():
             skipped += 1
             continue
         db.session.add(Enrollment(student_id=sid, section_id=section_id, enroll_date=date.today()))
