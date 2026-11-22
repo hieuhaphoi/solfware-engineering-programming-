@@ -197,6 +197,12 @@ def assigned_sections():
 
         open_sess = next((sess for sess in sec_sessions if _remaining_seconds(sess, now) > 0), None)
         open_data = _serialize_session(open_sess, now) if open_sess else None
+        if open_data and open_sess:
+            open_recs = records_by_session.get(open_sess.session_id, [])
+            open_sum = _summarize_records(open_recs)
+            open_data["checked_in_count"] = open_sum["present"] + open_sum["late"]
+            open_data["total_students"] = enroll_counts.get(sec.section_id, len(open_recs))
+            open_data["meeting_number"] = len(sec_sessions)
 
         item = {
             "section_id": sec.section_id,

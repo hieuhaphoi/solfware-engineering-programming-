@@ -12,7 +12,7 @@ class AttendanceSession(db.Model):
 
     session_id = db.Column(
         "sessionid",
-        db.BigInteger,
+        db.BigInteger().with_variant(db.Integer, "sqlite"),
         primary_key=True,
         autoincrement=True,
     )

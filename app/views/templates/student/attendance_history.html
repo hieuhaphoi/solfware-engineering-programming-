@@ -1,1 +1,172 @@
+{% extends "base.html" %}
 
+{% block title %}Attendance History · Attendly Student{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/student.css') }}">
+{% endblock %}
+
+{% block student_content %}
+{% set rec_list = records if records is defined else [] %}
+{% set sec_list = sections if sections is defined else [] %}
+{% set cur_sec = current_section if current_section is defined and current_section else (sec_list[0] if sec_list else None) %}
+{% set sum_data = summary if summary is defined else {'total': 0, 'present': 0, 'late': 0, 'excused': 0, 'absent': 0, 'attendance_rate': 0} %}
+{% set live_item = open_session if open_session is defined and open_session else None %}
+{% set cur_filter = filters.get('section_id') if filters is defined else '' %}
+
+<!-- Back Navigation & Course Switcher -->
+<div class="stu-back-bar">
+    <a href="{{ url_for('student.courses_checkin') }}" class="stu-back-link">
+        <span>&larr;</span>
+        <span>My courses</span>
+    </a>
+
+    {% if sec_list|length > 1 %}
+    <form method="GET" action="{{ url_for('student.attendance_history') }}">
+        <select name="section_id" class="roster-filter-select" style="height: 32px; font-size: 12px;" onchange="this.form.submit()">
+            <option value="" {% if not cur_filter %}selected{% endif %}>All courses</option>
+            {% for s in sec_list %}
+                <option value="{{ s.section_id }}" {% if cur_filter == s.section_id %}selected{% endif %}>
+                    {{ s.course_id }} · {{ s.section_name }}
+                </option>
+            {% endfor %}
+        </select>
+    </form>
+    {% else %}
+        <span style="color: var(--text-muted); font-weight: 700; letter-spacing: 0.1em;">&middot;&middot;&middot;</span>
+    {% endif %}
+</div>
+
+<!-- Course Header -->
+{% if cur_sec %}
+    <div class="stu-date-eyebrow">
+        {{ cur_sec.course_id }} &middot; {{ cur_sec.section_name|upper }} &middot; {{ (cur_sec.semester or 'FALL 2026')|upper }}
+    </div>
+    <h1 class="stu-greeting-title" style="font-size: 25px; margin-top: 4px;">{{ cur_sec.course_name }}</h1>
+    <p class="stu-greeting-sub">{{ cur_sec.lecturer_name or 'Dr. Maya Chen' }} &middot; Your attendance history</p>
+{% else %}
+    <div class="stu-date-eyebrow">FALL 2026</div>
+    <h1 class="stu-greeting-title" style="font-size: 25px; margin-top: 4px;">Attendance History</h1>
+    <p class="stu-greeting-sub">Your completed class meetings across enrolled courses</p>
+{% endif %}
+
+<!-- Attendance Rate Progress Card -->
+{% set rate_val = sum_data.get('attendance_rate', 0) %}
+{% set attended_count = (sum_data.get('present', 0) + sum_data.get('late', 0)) %}
+{% set total_count = sum_data.get('total', 0) %}
+
+<div class="stu-rate-card">
+    <div class="stu-rate-top">
+        <div>
+            <div class="stu-rate-label">Attendance rate</div>
+            <div class="stu-rate-big">{{ rate_val }}<span>%</span></div>
+        </div>
+        <div style="text-align: right;">
+            {% if total_count == 0 or rate_val >= 80 %}
+                <span class="badge badge-success">On track</span>
+            {% else %}
+                <span class="badge badge-danger">Below threshold</span>
+            {% endif %}
+            <div class="stu-min-req">Minimum required: 80%</div>
+        </div>
+    </div>
+
+    <div class="stu-progress-track">
+        <div class="stu-progress-fill" style="width: {{ rate_val if total_count > 0 else 100 }}%;"></div>
+    </div>
+
+    <div class="stu-counts-row">
+        <div><strong>{{ sum_data.get('present', 0) }}</strong> Present</div>
+        <div><strong>{{ sum_data.get('late', 0) }}</strong> Late</div>
+        <div><strong>{{ sum_data.get('absent', 0) }}</strong> Absent</div>
+    </div>
+
+    <div class="stu-completed-note">
+        {{ attended_count }} of {{ total_count }} completed meetings attended
+    </div>
+</div>
+
+<!-- Live Meeting Alert Pill (if a session is currently open) -->
+{% if live_item %}
+<a href="{{ url_for('student.courses_checkin') }}" class="stu-live-banner">
+    <div class="stu-live-banner-left">
+        <span style="font-size: 16px; font-weight: 700;">((&bull;))</span>
+        <div>
+            <div class="stu-live-banner-title">Meeting {{ live_item.session_id }} is taking attendance</div>
+            <div class="stu-live-banner-sub">
+                {{ live_item.session_date or 'Today' }} &middot;
+                {% if live_item.status in ['PRESENT', 'LATE'] %}
+                    Checked in ({{ live_item.status }})
+                {% else %}
+                    ABSENT until valid check-in
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <span style="font-weight: 700;">&rarr;</span>
+</a>
+{% endif %}
+
+<!-- Completed Meetings Header -->
+<div class="stu-section-header">
+    <h2 class="stu-section-title">Completed meetings</h2>
+    <span class="stu-section-meta">{{ rec_list|length }} meetings &middot; 2026</span>
+</div>
+
+<!-- Completed Meetings List Card -->
+{% set month_names = {'01': 'JAN', '02': 'FEB', '03': 'MAR', '04': 'APR', '05': 'MAY', '06': 'JUN', '07': 'JUL', '08': 'AUG', '09': 'SEP', '10': 'OCT', '11': 'NOV', '12': 'DEC'} %}
+<div class="stu-meetings-card">
+    {% if rec_list %}
+        {% for item in rec_list %}
+            {% set s_date = item.session_date or '2026-10-19' %}
+            {% set day_num = s_date[8:10] if s_date|length >= 10 else '19' %}
+            {% set mon_num = s_date[5:7] if s_date|length >= 7 else '10' %}
+            {% set mon_abbr = month_names.get(mon_num, 'OCT') %}
+            {% set meeting_idx = (rec_list|length) - loop.index0 %}
+            {% set st_up = (item.status or 'ABSENT')|upper %}
+
+            <div class="stu-meeting-row">
+                <div class="stu-meeting-left">
+                    <div class="stu-date-box">
+                        <div class="stu-date-day">{{ day_num }}</div>
+                        <div class="stu-date-mon">{{ mon_abbr }}</div>
+                    </div>
+                    <div>
+                        <div class="stu-meeting-title">
+                            {{ item.course_name }} &middot; {{ item.section_name }}
+                        </div>
+                        <div class="stu-meeting-sub">
+                            Meeting {{ meeting_idx }} &middot;
+                            {% if item.check_time %}
+                                {{ item.check_time[11:16] if item.check_time|length >= 16 else item.check_time }}
+                            {% else %}
+                                No check-in
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    {% if st_up == 'PRESENT' %}
+                        <span class="badge badge-success">Present</span>
+                    {% elif st_up == 'LATE' %}
+                        <span class="badge badge-warning">Late</span>
+                    {% elif st_up == 'EXCUSED' %}
+                        <span class="badge badge-info">Excused</span>
+                    {% else %}
+                        <span class="badge badge-danger">Absent</span>
+                    {% endif %}
+                </div>
+            </div>
+        {% endfor %}
+    {% else %}
+        <div style="padding: 32px 18px; text-align: center; color: var(--text-muted); font-size: 13px;">
+            No attendance records recorded for your courses yet.
+        </div>
+    {% endif %}
+</div>
+
+<p class="stu-help-footnote">
+    Something doesn't look right? Contact your lecturer to request an attendance correction.
+</p>
+{% endblock %}

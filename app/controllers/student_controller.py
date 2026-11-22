@@ -258,6 +258,8 @@ def attendance_history():
             "course_name": course_map.get(s.course_id, {}).get("course_name", s.course_id),
             "section_name": s.section_name,
             "semester": s.semester,
+            "room": s.room,
+            "lecturer_name": lecturer_map.get(s.lecturer_id, "TBA"),
         }
         for s in sections
     ]
@@ -270,6 +272,8 @@ def attendance_history():
         .all()
     )
 
+    now = datetime.now()
+    open_sessions_by_sec = {}
     all_items = []
     by_section = {}
     for rec, sess in rows:
@@ -279,6 +283,7 @@ def attendance_history():
         cid = sec.course_id if sec else ""
         c_name = course_map.get(cid, {}).get("course_name", cid)
         status_val = (rec.status or "ABSENT").upper()
+        rem = _remaining_seconds(sess, now)
 
         item = {
             "record_id": rec.record_id,
@@ -296,9 +301,13 @@ def attendance_history():
             "check_time": rec.check_time.isoformat() if rec.check_time else None,
             "status": status_val,
             "absent": bool(rec.absent),
+            "is_open": rem > 0,
+            "remaining_seconds": rem,
         }
         all_items.append(item)
         by_section.setdefault(sess.section_id, []).append(item)
+        if rem > 0 and sess.section_id not in open_sessions_by_sec:
+            open_sessions_by_sec[sess.section_id] = item
 
     filtered = []
     for item in all_items:
@@ -317,11 +326,25 @@ def attendance_history():
         for opt in sec_options
     ]
 
+    current_section = None
+    if section_filter:
+        current_section = next((s for s in section_summaries if s["section_id"] == section_filter), None)
+    if not current_section and section_summaries:
+        current_section = section_summaries[0]
+
+    open_session = None
+    if section_filter and section_filter in open_sessions_by_sec:
+        open_session = open_sessions_by_sec[section_filter]
+    elif open_sessions_by_sec:
+        open_session = next(iter(open_sessions_by_sec.values()))
+
     if _wants_json():
         return jsonify({
             "success": True,
             "student_id": student_id,
             "summary": summary,
+            "current_section": current_section,
+            "open_session": open_session,
             "section_summaries": section_summaries,
             "records": filtered,
             "sections": sec_options,
@@ -331,6 +354,8 @@ def attendance_history():
         "student/attendance_history.html",
         records=filtered,
         sections=sec_options,
+        current_section=current_section,
+        open_session=open_session,
         summary=summary,
         section_summaries=section_summaries,
         filters={"section_id": section_filter, "status": status_filter},

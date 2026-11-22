@@ -2,7 +2,7 @@ import importlib
 from flask import Flask, jsonify, redirect, render_template, session, url_for
 
 from app.config import Config
-from app.extensions.database import db
+from app.extensions.database import configure_database_uri, db, ensure_tables_and_seed
 from app.extensions.redis_client import redis_client
 from app.services.auth_factory import role_required
 
@@ -36,12 +36,17 @@ def create_app(config_class=Config) -> Flask:
         static_folder="views/static",
     )
     app.config.from_object(config_class)
+    configure_database_uri(app)
 
     db.init_app(app)
     redis_client.init_app(app)
 
     with app.app_context():
         importlib.import_module("app.models")
+        try:
+            ensure_tables_and_seed()
+        except Exception:
+            pass
 
     _register_blueprints(app)
 

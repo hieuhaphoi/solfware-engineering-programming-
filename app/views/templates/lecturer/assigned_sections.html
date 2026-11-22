@@ -3,48 +3,234 @@
 {% block title %}My Sections · Attendly Lecturer{% endblock %}
 {% block breadcrumb %}Overview{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/lecturer.css') }}">
+{% endblock %}
+
 {% block content %}
+{% set st = stats if stats is defined else {} %}
+{% set sec_list = sections if sections is defined else [] %}
+{% set sem_list = semesters if semesters is defined else ['Fall 2026'] %}
+{% set cur_sem = (filters.get('semester') if filters is defined else '') or st.get('current_semester') or 'Fall 2026' %}
+{% set raw_name = session.get('fullname') or session.get('username') or 'Dr. Chen' %}
+{% set name_tokens = raw_name.split(' ') %}
+{% set short_lecturer_name = ('Dr. ' ~ name_tokens[-1]) if ('Dr.' in raw_name and name_tokens|length > 1) else raw_name %}
+
+<!-- Top Greeting & Semester Dropdown -->
 <div class="page-header">
     <div>
-        <h1 class="page-title">Good morning, {{ session.get('fullname') or session.get('username') }}.</h1>
+        <h1 class="page-title">Good morning, {{ short_lecturer_name }}.</h1>
         <p class="page-subtitle">A clear view of your classes and the students who show up.</p>
     </div>
     <div>
-        <span class="badge badge-info">Fall 2026</span>
+        <form method="GET" action="{{ url_for('lecturer.assigned_sections') }}">
+            <select name="semester" class="semester-select" onchange="this.form.submit()">
+                {% if sem_list %}
+                    {% for sem in sem_list %}
+                        <option value="{{ sem }}" {% if sem == cur_sem %}selected{% endif %}>{{ sem }}</option>
+                    {% endfor %}
+                {% else %}
+                    <option value="Fall 2026" selected>Fall 2026</option>
+                {% endif %}
+            </select>
+        </form>
     </div>
 </div>
 
+<!-- 3 Metric Cards -->
+{% set distinct_courses = sec_list | map(attribute='course_id') | unique | list %}
 <div class="stats-grid">
     <div class="stat-card">
         <div class="stat-label">Assigned sections</div>
-        <div class="stat-value">2</div>
-        <div class="stat-meta">CS201-A, CS105-B</div>
+        <div class="stat-value">{{ st.get('assigned_sections', sec_list|length) }}</div>
+        <div class="stat-meta">{{ distinct_courses|length if distinct_courses else 2 }} courses this semester</div>
     </div>
     <div class="stat-card">
         <div class="stat-label">Enrolled students</div>
-        <div class="stat-value">3</div>
+        <div class="stat-value">{{ st.get('enrolled_students', 0) }}</div>
         <div class="stat-meta">Across your assigned sections</div>
     </div>
     <div class="stat-card">
         <div class="stat-label">Average attendance</div>
-        <div class="stat-value">94%</div>
+        <div class="stat-value">{{ st.get('average_attendance', 0)|round(0)|int if st.get('average_attendance') else 0 }}%</div>
         <div class="stat-meta">All completed class meetings</div>
     </div>
 </div>
 
-<div class="card-panel" style="background-color: var(--dark-navy); color: #FFFFFF; border: none;">
-    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
-        <div>
-            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
-                <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; color: #C7CCF8;">CS201 &middot; SECTION A</span>
-                <span class="badge badge-success">Session open</span>
-            </div>
-            <h2 style="font-size: 20px; font-weight: 700;">Database Systems</h2>
-            <p style="font-size: 12.5px; color: #A6ACBE; margin-top: 4px;">
-                Room B-204 &middot; Lecturer ID: {{ session.get('profile_id') or 'L-1001' }}
-            </p>
-        </div>
-        <a href="/lecturer/attendance" class="btn btn-primary">&rarr; Manage attendance</a>
+<!-- In the classroom today -->
+{% set primary_sec = active_session if active_session else (sec_list[0] if sec_list else None) %}
+{% set next_sec = None %}
+{% for item in sec_list %}
+    {% if primary_sec and item.section_id != primary_sec.section_id and not next_sec %}
+        {% set next_sec = item %}
+    {% endif %}
+{% endfor %}
+{% if not next_sec and sec_list|length > 1 %}
+    {% set next_sec = sec_list[1] %}
+{% endif %}
+
+<div class="lec-section-head">
+    <div>
+        <div class="lec-section-title">In the classroom today</div>
+        <div class="lec-section-sub">{{ cur_sem }} &middot; Active Teaching Schedule</div>
     </div>
+</div>
+
+<div class="classroom-today-grid">
+    <!-- Left Dark Hero Card -->
+    {% if primary_sec %}
+        {% set live_sess = primary_sec.get('session') or primary_sec.get('active_session') %}
+        <div class="classroom-live-card">
+            <div class="classroom-live-left">
+                <div class="classroom-time-box">
+                    {% if live_sess and live_sess.get('start_time') %}
+                        <div class="classroom-time-main">{{ live_sess.get('start_time')[11:16] }}</div>
+                        <div class="classroom-time-sub">
+                            {{ live_sess.get('end_time')[11:16] if live_sess.get('end_time') else 'Active' }}
+                        </div>
+                    {% else %}
+                        <div class="classroom-time-main">09:00</div>
+                        <div class="classroom-time-sub">10:30 AM</div>
+                    {% endif %}
+                </div>
+
+                <div>
+                    <div class="classroom-course-tag">
+                        <span class="classroom-course-code">{{ primary_sec.course_id }} &middot; {{ primary_sec.section_name|upper }}</span>
+                        {% if live_sess and live_sess.get('is_open') %}
+                            <span class="badge badge-success">Session open</span>
+                        {% else %}
+                            <span class="badge badge-info">Ready to open</span>
+                        {% endif %}
+                    </div>
+                    <h2 class="classroom-course-title">{{ primary_sec.course_name }}</h2>
+                    <p class="classroom-course-meta">
+                        {{ primary_sec.room or 'Room TBA' }}
+                        &middot; Meeting {{ (live_sess.get('meeting_number') if live_sess else primary_sec.total_sessions) or 1 }}
+                        {% if live_sess %}
+                            &middot; {{ live_sess.get('checked_in_count', 0) }} of {{ live_sess.get('total_students', primary_sec.enrolled_count) }} checked in
+                        {% else %}
+                            &middot; {{ primary_sec.enrolled_count }} enrolled students
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+
+            <div>
+                {% if live_sess and live_sess.get('is_open') %}
+                    <a href="{{ url_for('lecturer.class_attendance', section_id=primary_sec.section_id) }}" class="btn btn-primary">
+                        &rarr; Manage attendance
+                    </a>
+                {% else %}
+                    <form method="POST" action="{{ url_for('attendance.open_session') }}" style="display: inline-block;">
+                        <input type="hidden" name="section_id" value="{{ primary_sec.section_id }}">
+                        <button type="submit" class="btn btn-primary">
+                            &rarr; Open PIN session
+                        </button>
+                    </form>
+                {% endif %}
+            </div>
+        </div>
+    {% else %}
+        <div class="classroom-live-card">
+            <div>
+                <div class="classroom-course-code">NO ASSIGNED SECTIONS</div>
+                <h2 class="classroom-course-title" style="margin-top: 4px;">No classes scheduled today</h2>
+                <p class="classroom-course-meta">Ask an administrator to assign course sections to your lecturer profile.</p>
+            </div>
+        </div>
+    {% endif %}
+
+    <!-- Right Next Class Card -->
+    <div class="classroom-next-card">
+        {% if next_sec %}
+            <div class="next-card-eyebrow">NEXT CLASS &middot; UPCOMING</div>
+            <div class="next-card-title">{{ next_sec.course_name }}</div>
+            <div class="next-card-meta">{{ next_sec.course_id }} &middot; {{ next_sec.section_name }} &middot; 11:00–12:30</div>
+            <div class="next-card-meta">{{ next_sec.room or 'Room TBA' }} &middot; {{ next_sec.enrolled_count }} students</div>
+        {% elif primary_sec %}
+            <div class="next-card-eyebrow">NEXT CLASS &middot; UPCOMING</div>
+            <div class="next-card-title">{{ primary_sec.course_name }}</div>
+            <div class="next-card-meta">{{ primary_sec.course_id }} &middot; {{ primary_sec.section_name }} &middot; Next meeting</div>
+            <div class="next-card-meta">{{ primary_sec.room or 'Room TBA' }} &middot; {{ primary_sec.enrolled_count }} students</div>
+        {% else %}
+            <div class="next-card-eyebrow">NEXT CLASS</div>
+            <div class="next-card-title">No upcoming class</div>
+            <div class="next-card-meta">Your schedule is clear.</div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Your sections table -->
+<div class="lec-section-head">
+    <div>
+        <div class="lec-section-title">Your sections</div>
+        <div class="lec-section-sub">The classes you teach this semester.</div>
+    </div>
+    <a href="{{ url_for('lecturer.class_attendance') }}" class="lec-link-subtle">View teaching calendar &rarr;</a>
+</div>
+
+<div class="sections-table-card">
+    {% if sec_list %}
+        {% set default_schedules = ['Mon · 09:00', 'Tue & Thu · 11:00', 'Wed · 14:00', 'Fri · 10:00'] %}
+        <div class="table-responsive">
+            <table class="lec-table">
+                <thead>
+                    <tr>
+                        <th>COURSE / SECTION</th>
+                        <th>SCHEDULE</th>
+                        <th>STUDENTS</th>
+                        <th>ATTENDANCE</th>
+                        <th style="text-align: right;">ACTION</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sec in sec_list %}
+                    <tr>
+                        <td>
+                            <div class="sec-cell-code">
+                                <span>{{ sec.course_id }} &middot; {{ sec.section_name|upper }}</span>
+                                {% if sec.active_session and sec.active_session.is_open %}
+                                    <span class="badge badge-success" style="padding: 1px 7px; font-size: 10px;">Live</span>
+                                {% endif %}
+                            </div>
+                            <div class="sec-cell-title">{{ sec.course_name }}</div>
+                        </td>
+                        <td>
+                            <div class="sec-schedule-main">{{ default_schedules[loop.index0 % (default_schedules|length)] }}</div>
+                            <div class="sec-schedule-sub">{{ sec.room or 'Room TBA' }}</div>
+                        </td>
+                        <td style="font-weight: 600;">{{ sec.enrolled_count }}</td>
+                        <td>
+                            <span class="rate-cell">
+                                {{ sec.attendance_rate|round(0)|int }}%
+                                <span class="rate-spark">&#8599;</span>
+                            </span>
+                        </td>
+                        <td style="text-align: right;">
+                            <a href="{{ url_for('lecturer.class_attendance', section_id=sec.section_id) }}" class="open-sec-link">
+                                Open section &rarr;
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div style="padding: 36px 20px; text-align: center; color: var(--text-muted);">
+            No course sections found for your account.
+        </div>
+    {% endif %}
+</div>
+
+<!-- Bottom Info Alert -->
+<div class="info-note-bar">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="16" x2="12" y2="12"></line>
+        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+    </svg>
+    <span>Your attendance records are saved automatically. You can adjust any student's status from the class meeting workspace.</span>
 </div>
 {% endblock %}

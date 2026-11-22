@@ -22,12 +22,20 @@ class Config:
         "DATABASE_URL",
         f"postgresql+psycopg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}",
     )
+    SQLITE_FALLBACK_URI = os.getenv(
+        "SQLITE_FALLBACK_URI",
+        "sqlite:///" + os.path.join(os.path.abspath(os.path.dirname(os.path.dirname(__file__))), "database", "attendly_local.db").replace("\\", "/"),
+    )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    SQLALCHEMY_ENGINE_OPTIONS = {
-        "pool_size": 20,
-        "max_overflow": 40,
-        "pool_pre_ping": True,
-    }
+    SQLALCHEMY_ENGINE_OPTIONS = (
+        {
+            "pool_size": 20,
+            "max_overflow": 40,
+            "pool_pre_ping": True,
+        }
+        if not SQLALCHEMY_DATABASE_URI.startswith("sqlite")
+        else {"pool_pre_ping": True}
+    )
 
     # Redis Cache Configuration (PIN validation & TTL)
     REDIS_HOST = os.getenv("REDIS_HOST", "localhost")

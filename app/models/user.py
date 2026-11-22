@@ -17,7 +17,7 @@ class User(db.Model):
 
     user_id = db.Column(
         "userid",
-        db.BigInteger,
+        db.BigInteger().with_variant(db.Integer, "sqlite"),
         primary_key=True,
         autoincrement=True,
     )

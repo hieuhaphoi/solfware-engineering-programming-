@@ -1,1 +1,813 @@
+/* ==========================================================================
+   Attendly - Lecturer Workspace Styles (Phase 5: Assigned Sections & Class Attendance)
+   ========================================================================== */
 
+/* Semester Select Pill in Page Header */
+.semester-select {
+    height: 36px;
+    padding: 0 32px 0 14px;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: var(--font-sans);
+    color: var(--text-main);
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    cursor: pointer;
+    outline: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235A6072' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+}
+
+.semester-select:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(67, 73, 156, 0.12);
+}
+
+/* Section Heading Block */
+.lec-section-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.lec-section-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-main);
+    letter-spacing: -0.01em;
+}
+
+.lec-section-sub {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.lec-link-subtle {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.lec-link-subtle:hover {
+    color: var(--primary);
+}
+
+/* In the classroom today: 2-Column Split (Dark Active Card + Light Next Class Card) */
+.classroom-today-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 2.2fr) minmax(260px, 1fr);
+    gap: 16px;
+    margin-bottom: 28px;
+}
+
+.classroom-live-card {
+    background-color: var(--dark-navy);
+    color: #FFFFFF;
+    border-radius: var(--radius-lg);
+    padding: 22px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    box-shadow: var(--shadow-card);
+}
+
+.classroom-live-left {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+}
+
+.classroom-time-box {
+    padding-right: 22px;
+    border-right: 1px solid rgba(255, 255, 255, 0.14);
+    min-width: 82px;
+}
+
+.classroom-time-main {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #FFFFFF;
+    line-height: 1.15;
+}
+
+.classroom-time-sub {
+    font-size: 11.5px;
+    color: #A6ACBE;
+    margin-top: 4px;
+}
+
+.classroom-course-tag {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+}
+
+.classroom-course-code {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #C7CCF8;
+}
+
+.classroom-course-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: #FFFFFF;
+    letter-spacing: -0.015em;
+}
+
+.classroom-course-meta {
+    font-size: 12.5px;
+    color: #A6ACBE;
+    margin-top: 4px;
+}
+
+.classroom-next-card {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 20px 22px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    box-shadow: var(--shadow-sm);
+}
+
+.next-card-eyebrow {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+}
+
+.next-card-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-main);
+    margin-bottom: 4px;
+}
+
+.next-card-meta {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+/* Your Sections Table Card */
+.sections-table-card {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+    margin-bottom: 16px;
+}
+
+.lec-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+}
+
+.lec-table th {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--text-muted);
+    padding: 13px 20px;
+    border-bottom: 1px solid var(--border-color);
+    background-color: #FAF9F6;
+}
+
+.lec-table td {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-color);
+    vertical-align: middle;
+    font-size: 13.5px;
+}
+
+.lec-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.lec-table tbody tr:hover {
+    background-color: rgba(243, 242, 238, 0.45);
+}
+
+.sec-cell-code {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 3px;
+}
+
+.sec-cell-title {
+    font-size: 14.5px;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.sec-schedule-main {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+.sec-schedule-sub {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.rate-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.rate-spark {
+    color: var(--success-text);
+    font-size: 13px;
+}
+
+.open-sec-link {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-main);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.open-sec-link:hover {
+    color: var(--primary);
+}
+
+/* Subtle Info Banner at Bottom */
+.info-note-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background-color: var(--primary-light);
+    border: 1px solid var(--primary-border);
+    border-radius: var(--radius-md);
+    font-size: 12.5px;
+    color: var(--primary);
+}
+
+/* ==========================================================================
+   CLASS ATTENDANCE & PIN WORKSPACE (lecturer/class_attendance.html)
+   ========================================================================== */
+
+.att-header-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+}
+
+.att-subnav-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 12px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.att-tabs {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+}
+
+.att-tab {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    padding-bottom: 12px;
+    margin-bottom: -13px;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+}
+
+.att-tab.active {
+    color: var(--primary);
+    font-weight: 700;
+    border-bottom-color: var(--primary);
+}
+
+.att-pickers {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+/* Active Session PIN Hero Card */
+.pin-session-card {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xl);
+    padding: 24px 28px;
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 20px;
+}
+
+.pin-session-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 22px;
+    flex-wrap: wrap;
+}
+
+.pin-session-status-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.pin-session-title {
+    font-size: 19px;
+    font-weight: 700;
+    color: var(--text-main);
+    letter-spacing: -0.015em;
+}
+
+.pin-session-meta {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    margin-top: 3px;
+}
+
+.pin-session-rule {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+.pin-timer-box {
+    text-align: right;
+}
+
+.pin-countdown-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    background-color: var(--bg-subtle);
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+}
+
+.pin-countdown-badge.expiring {
+    background-color: var(--warning-bg);
+    color: var(--warning-text);
+    border-color: rgba(178, 107, 0, 0.25);
+}
+
+.pin-countdown-badge.expired {
+    background-color: var(--danger-bg);
+    color: var(--danger-text);
+    border-color: rgba(201, 53, 43, 0.25);
+}
+
+.pin-autoclose-note {
+    font-size: 11.5px;
+    color: var(--text-muted);
+    margin-top: 5px;
+}
+
+/* 3-Column PIN Box + Manual Legend + Close Session Button */
+.pin-control-grid {
+    display: grid;
+    grid-template-columns: 1.15fr 1.25fr 0.8fr;
+    gap: 20px;
+    align-items: center;
+    padding: 20px 22px;
+    background-color: #FAF9F6;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    margin-bottom: 16px;
+}
+
+.pin-display-col {
+    text-align: center;
+    border-right: 1px solid var(--border-color);
+    padding-right: 20px;
+}
+
+.pin-eyebrow {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+}
+
+.pin-digits-large {
+    font-size: 38px;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+    color: var(--text-main);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.15;
+    margin: 4px 0 10px;
+}
+
+.pin-actions-inline {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    margin-bottom: 12px;
+}
+
+.pin-link-btn {
+    background: none;
+    border: none;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--font-sans);
+}
+
+.pin-link-btn:hover {
+    color: var(--primary);
+}
+
+.projector-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    background-color: var(--primary-light);
+    color: var(--primary);
+    border: 1px solid var(--primary-border);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.projector-btn:hover {
+    background-color: #E0E4FF;
+}
+
+/* Manual Status Editing 2x2 Pills */
+.manual-status-col {
+    text-align: center;
+    padding: 0 12px;
+}
+
+.manual-col-label {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+}
+
+.status-pills-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    max-width: 240px;
+    margin: 0 auto 10px;
+}
+
+.status-legend-box {
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    border: 1px solid var(--border-input);
+    background-color: var(--bg-surface);
+    color: var(--text-secondary);
+}
+
+.status-legend-box.active-present {
+    border-color: var(--primary);
+    color: var(--primary);
+    background-color: var(--primary-light);
+}
+
+.manual-col-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    max-width: 260px;
+    margin: 0 auto;
+    line-height: 1.4;
+}
+
+.session-action-col {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: center;
+}
+
+.session-action-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 6px;
+    text-align: right;
+}
+
+/* Summary Strip above Roster */
+.attendance-summary-strip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 4px 4px 16px;
+    flex-wrap: wrap;
+}
+
+.summary-counts-row {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    flex-wrap: wrap;
+}
+
+.summary-count-item {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.summary-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 2px;
+    align-self: center;
+}
+
+.summary-dot.present { background-color: var(--success-text); }
+.summary-dot.late { background-color: var(--warning-text); }
+.summary-dot.excused { background-color: var(--primary); }
+.summary-dot.absent { background-color: var(--danger-text); }
+
+.summary-count-num {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.summary-live-meta {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+/* Student Roster Card */
+.roster-card {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+}
+
+.roster-card-header {
+    padding: 18px 22px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    border-bottom: 1px solid var(--border-color);
+    flex-wrap: wrap;
+}
+
+.roster-title-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.roster-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.roster-count-pill {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background-color: var(--bg-subtle);
+    padding: 2px 9px;
+    border-radius: 999px;
+}
+
+.roster-filters {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.roster-search-input {
+    height: 36px;
+    padding: 0 12px;
+    font-size: 12.5px;
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-md);
+    min-width: 220px;
+    outline: none;
+    font-family: var(--font-sans);
+}
+
+.roster-search-input:focus {
+    border-color: var(--primary);
+}
+
+.roster-filter-select {
+    height: 36px;
+    padding: 0 12px;
+    font-size: 12.5px;
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-md);
+    background-color: var(--bg-surface);
+    outline: none;
+    font-family: var(--font-sans);
+}
+
+.student-cell {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.student-avatar-sm {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background-color: var(--bg-subtle);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.student-name-text {
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+/* Status Select Dropdown Styled as Semantic Badge */
+.status-select-wrap {
+    display: inline-flex;
+    align-items: center;
+}
+
+.status-select {
+    height: 30px;
+    padding: 0 26px 0 10px;
+    border-radius: 6px;
+    font-size: 11.5px;
+    font-weight: 700;
+    font-family: var(--font-sans);
+    border: 1px solid transparent;
+    cursor: pointer;
+    outline: none;
+    appearance: none;
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235A6072' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+}
+
+.status-select.status-present {
+    background-color: var(--success-bg);
+    color: var(--success-text);
+}
+
+.status-select.status-late {
+    background-color: var(--warning-bg);
+    color: var(--warning-text);
+}
+
+.status-select.status-excused {
+    background-color: var(--info-bg);
+    color: var(--info-text);
+}
+
+.status-select.status-absent {
+    background-color: var(--danger-bg);
+    color: var(--danger-text);
+}
+
+.roster-footer {
+    padding: 14px 22px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text-muted);
+    background-color: #FAF9F6;
+    border-top: 1px solid var(--border-color);
+}
+
+/* Projector Fullscreen Modal */
+.projector-modal {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(24, 26, 37, 0.85);
+    backdrop-filter: blur(4px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 999;
+    padding: 24px;
+}
+
+.projector-modal.open {
+    display: flex;
+}
+
+.projector-card {
+    background-color: var(--dark-navy);
+    color: #FFFFFF;
+    border-radius: 24px;
+    padding: 48px 56px;
+    text-align: center;
+    max-width: 640px;
+    width: 100%;
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.45);
+}
+
+.projector-pin-digits {
+    font-size: 76px;
+    font-weight: 800;
+    letter-spacing: 0.22em;
+    color: #FFFFFF;
+    margin: 24px 0;
+    font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 960px) {
+    .classroom-today-grid,
+    .pin-control-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .pin-display-col {
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+        padding-right: 0;
+        padding-bottom: 16px;
+    }
+
+    .session-action-col {
+        align-items: center;
+    }
+}

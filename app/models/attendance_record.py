@@ -25,7 +25,7 @@ class AttendanceRecord(db.Model):
 
     record_id = db.Column(
         "recordid",
-        db.BigInteger,
+        db.BigInteger().with_variant(db.Integer, "sqlite"),
         primary_key=True,
         autoincrement=True,
     )

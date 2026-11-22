@@ -1,1 +1,408 @@
+{% extends "base.html" %}
 
+{% block title %}{{ current_section.course_name if current_section else 'Class Attendance' }} · Attendly Lecturer{% endblock %}
+{% block breadcrumb %}Class attendance{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/lecturer.css') }}">
+{% endblock %}
+
+{% block content %}
+{% set cur_sec = current_section if current_section is defined and current_section else None %}
+{% set sec_list = sections if sections is defined else [] %}
+{% set sess_list = sessions if sessions is defined else [] %}
+{% set sel_sess = selected_session if selected_session is defined and selected_session else None %}
+{% set act_sess = active_session if active_session is defined and active_session else None %}
+{% set rec_list = records if records is defined else [] %}
+{% set sum_data = summary if summary is defined else {'total': 0, 'present': 0, 'late': 0, 'excused': 0, 'absent': 0} %}
+{% set rem_secs = remaining_seconds if remaining_seconds is defined else 0 %}
+
+{% if not cur_sec %}
+    <div class="card-panel" style="text-align: center; padding: 48px 24px;">
+        <h2 class="page-title" style="font-size: 20px;">No course sections assigned</h2>
+        <p class="page-subtitle" style="margin-top: 6px;">You do not have any course sections assigned for attendance tracking yet.</p>
+        <a href="{{ url_for('lecturer.assigned_sections') }}" class="btn btn-primary" style="margin-top: 16px;">&larr; Back to My sections</a>
+    </div>
+{% else %}
+
+<!-- Top Title & Export Report Button -->
+<div class="att-header-top">
+    <div>
+        <h1 class="page-title">{{ cur_sec.course_name }}</h1>
+        <p class="page-subtitle">
+            {{ cur_sec.course_id }} &middot; {{ cur_sec.section_name }} &middot; {{ cur_sec.semester }} &middot; {{ cur_sec.room or 'Room TBA' }}
+        </p>
+    </div>
+    <div style="display: flex; align-items: center; gap: 10px;">
+        {% if sec_list|length > 1 %}
+        <select class="semester-select" onchange="window.location.href='/lecturer/sections/' + this.value + '/attendance'">
+            {% for s in sec_list %}
+                <option value="{{ s.section_id }}" {% if s.section_id == cur_sec.section_id %}selected{% endif %}>
+                    {{ s.course_id }} · {{ s.section_name }} ({{ s.course_name }})
+                </option>
+            {% endfor %}
+        </select>
+        {% endif %}
+        <a href="/lecturer/reports?section_id={{ cur_sec.section_id }}" class="btn btn-outline" style="height: 36px; padding: 0 14px; font-size: 12.5px;">
+            &darr; Export report
+        </a>
+    </div>
+</div>
+
+<!-- Sub-Navigation Tabs & Meeting Selector -->
+<div class="att-subnav-bar">
+    <div class="att-tabs">
+        <a href="{{ url_for('lecturer.class_attendance', section_id=cur_sec.section_id) }}" class="att-tab active">Class attendance</a>
+        <a href="/lecturer/reports?section_id={{ cur_sec.section_id }}" class="att-tab">Section reports</a>
+        <a href="#student-roster-card" class="att-tab">Students</a>
+    </div>
+
+    <div class="att-pickers">
+        {% if sess_list %}
+            <select class="semester-select" onchange="window.location.href='{{ url_for('lecturer.class_attendance', section_id=cur_sec.section_id) }}?session_id=' + this.value">
+                {% for s in sess_list %}
+                    {% set meeting_num = (sess_list|length) - loop.index0 %}
+                    <option value="{{ s.session_id }}" {% if sel_sess and s.session_id == sel_sess.session_id %}selected{% endif %}>
+                        Meeting {{ meeting_num }} &middot; {{ s.session_date or 'Today' }}{% if s.is_open %} (Open){% endif %}
+                    </option>
+                {% endfor %}
+            </select>
+        {% endif %}
+
+        {% if not act_sess %}
+            <form method="POST" action="{{ url_for('attendance.open_session') }}" style="display: inline;">
+                <input type="hidden" name="section_id" value="{{ cur_sec.section_id }}">
+                <button type="submit" class="btn btn-primary" style="height: 36px; padding: 0 14px; font-size: 12.5px;">
+                    + Open new PIN session
+                </button>
+            </form>
+        {% endif %}
+    </div>
+</div>
+
+<!-- PIN Session Control Card -->
+<div class="pin-session-card"
+     id="pinSessionRoot"
+     data-session-id="{{ sel_sess.session_id if sel_sess else '' }}"
+     data-section-id="{{ cur_sec.section_id }}"
+     data-is-open="{{ 'true' if (sel_sess and sel_sess.is_open) else 'false' }}"
+     data-remaining-seconds="{{ sel_sess.remaining_seconds if sel_sess else 0 }}">
+
+    {% if sel_sess %}
+        {% set sel_index = 1 %}
+        {% for s in sess_list %}
+            {% if s.session_id == sel_sess.session_id %}
+                {% set sel_index = (sess_list|length) - loop.index0 %}
+            {% endif %}
+        {% endfor %}
+
+        <div class="pin-session-top">
+            <div>
+                <div class="pin-session-status-row">
+                    {% if sel_sess.is_open %}
+                        <span class="badge badge-success" id="sessionStatusBadge">&bull; Session open</span>
+                    {% else %}
+                        <span class="badge badge-warning" id="sessionStatusBadge">Session closed</span>
+                    {% endif %}
+                    <span style="font-size: 12px; color: var(--text-muted);" id="sessionOpenedTime">
+                        Opened at {{ sel_sess.start_time[11:16] if sel_sess.start_time else '09:00' }}
+                    </span>
+                </div>
+                <h2 class="pin-session-title">Meeting {{ sel_sess.session_id }} &middot; {{ cur_sec.course_name }}</h2>
+                <div class="pin-session-meta">
+                    {{ sel_sess.session_date or 'Today' }}
+                    &middot; {{ sel_sess.start_time[11:16] if sel_sess.start_time else '09:00' }}–{{ sel_sess.end_time[11:16] if sel_sess.end_time else '10:30' }}
+                </div>
+                <div class="pin-session-rule">
+                    All {{ sum_data.total or (enrolled_students|length) }} students start ABSENT. A valid PIN marks PRESENT.
+                </div>
+            </div>
+
+            <div class="pin-timer-box">
+                <div class="pin-countdown-badge {% if not sel_sess.is_open %}expired{% endif %}" id="pinCountdownBadge">
+                    <span id="pinCountdownText">
+                        {% if sel_sess.is_open %}
+                            00:0{{ (sel_sess.remaining_seconds // 60) }}:{{ '%02d' % (sel_sess.remaining_seconds % 60) }} remaining
+                        {% else %}
+                            00:00:00 expired
+                        {% endif %}
+                    </span>
+                </div>
+                <div class="pin-autoclose-note">
+                    Auto-closes at {{ sel_sess.end_time[11:16] if sel_sess.end_time else 'expiry' }}
+                </div>
+            </div>
+        </div>
+
+        <!-- 3-Column PIN Box + Manual Status Guide + Close/Reopen Button -->
+        <div class="pin-control-grid">
+            <!-- Column 1: Auto-generated PIN -->
+            <div class="pin-display-col">
+                <div class="pin-eyebrow">AUTO-GENERATED PIN &middot; {{ (sel_sess.pin_code|length) if sel_sess.pin_code else 6 }} DIGITS</div>
+                <div class="pin-digits-large" id="activePinCodeDisplay">{{ sel_sess.pin_code or '------' }}</div>
+
+                <div class="pin-actions-inline">
+                    <button type="button" class="pin-link-btn" id="copyPinBtn" data-pin="{{ sel_sess.pin_code }}">
+                        Copy PIN
+                    </button>
+                    {% if sel_sess.is_open %}
+                    <form method="POST" action="{{ url_for('attendance.regenerate_pin', session_id=sel_sess.session_id) }}" id="regeneratePinForm" style="display: inline;">
+                        <button type="submit" class="pin-link-btn" id="regeneratePinBtn">
+                            &#8635; Regenerate
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+
+                <div>
+                    <button type="button" class="projector-btn" id="openProjectorBtn">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                            <line x1="8" y1="21" x2="16" y2="21"></line>
+                            <line x1="12" y1="17" x2="12" y2="21"></line>
+                        </svg>
+                        <span>Projector PIN display</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Column 2: Manual status editing legend -->
+            <div class="manual-status-col">
+                <div class="manual-col-label">Manual status editing</div>
+                <div class="status-pills-grid">
+                    <div class="status-legend-box active-present">PRESENT</div>
+                    <div class="status-legend-box">LATE</div>
+                    <div class="status-legend-box">EXCUSED</div>
+                    <div class="status-legend-box">ABSENT</div>
+                </div>
+                <div class="manual-col-hint">
+                    Use the roster dropdowns to correct late arrivals, approved leave, or device issues.
+                </div>
+            </div>
+
+            <!-- Column 3: Close or Open Session Action -->
+            <div class="session-action-col">
+                {% if sel_sess.is_open %}
+                    <form method="POST" action="{{ url_for('attendance.close_session', session_id=sel_sess.session_id) }}" id="closeSessionForm">
+                        <button type="submit" class="btn btn-primary" id="closeSessionBtn">
+                            &#9634; Close session
+                        </button>
+                    </form>
+                    <div class="session-action-hint">Manually close when class ends</div>
+                {% else %}
+                    <form method="POST" action="{{ url_for('attendance.open_session') }}">
+                        <input type="hidden" name="section_id" value="{{ cur_sec.section_id }}">
+                        <button type="submit" class="btn btn-primary">
+                            + Open new session
+                        </button>
+                    </form>
+                    <div class="session-action-hint">Start a new 5-minute PIN window</div>
+                {% endif %}
+            </div>
+        </div>
+    {% else %}
+        <!-- No sessions created yet for this section -->
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; padding: 12px 0;">
+            <div>
+                <span class="badge badge-info">No active session</span>
+                <h2 class="pin-session-title" style="margin-top: 8px;">Ready to take attendance for {{ cur_sec.course_name }}</h2>
+                <p class="pin-session-meta">
+                    Opening a session generates a 6-digit PIN with a 5-minute countdown and marks all {{ enrolled_students|length }} enrolled students as ABSENT by default.
+                </p>
+            </div>
+            <form method="POST" action="{{ url_for('attendance.open_session') }}">
+                <input type="hidden" name="section_id" value="{{ cur_sec.section_id }}">
+                <button type="submit" class="btn btn-primary">
+                    + Open attendance session
+                </button>
+            </form>
+        </div>
+    {% endif %}
+
+    <div class="info-note-bar" style="margin-top: 4px;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+        </svg>
+        <span>Closed sessions reject PIN submissions and preserve records for semester reports.</span>
+    </div>
+</div>
+
+<!-- Summary Counter Strip -->
+{% set checked_in_total = (sum_data.present or 0) + (sum_data.late or 0) %}
+<div class="attendance-summary-strip">
+    <div class="summary-counts-row">
+        <div class="summary-count-item">
+            <span class="summary-dot present"></span>
+            <span class="summary-count-num" id="countPresent">{{ sum_data.present or 0 }}</span>
+            <span>Present</span>
+        </div>
+        <div class="summary-count-item">
+            <span class="summary-dot late"></span>
+            <span class="summary-count-num" id="countLate">{{ sum_data.late or 0 }}</span>
+            <span>Late</span>
+        </div>
+        <div class="summary-count-item">
+            <span class="summary-dot excused"></span>
+            <span class="summary-count-num" id="countExcused">{{ sum_data.excused or 0 }}</span>
+            <span>Excused</span>
+        </div>
+        <div class="summary-count-item">
+            <span class="summary-dot absent"></span>
+            <span class="summary-count-num" id="countAbsent">{{ sum_data.absent or 0 }}</span>
+            <span>Absent</span>
+        </div>
+    </div>
+
+    <div class="summary-live-meta">
+        <span id="checkedInRatio">{{ checked_in_total }} / {{ sum_data.total or (enrolled_students|length) }}</span> checked in &middot; Live updates
+    </div>
+</div>
+
+<!-- Student Roster Table Card -->
+<div class="roster-card" id="student-roster-card">
+    <div class="roster-card-header">
+        <div class="roster-title-group">
+            <h3 class="roster-title">Student roster</h3>
+            <span class="roster-count-pill" id="rosterTotalBadge">{{ (rec_list|length) or (enrolled_students|length) }} students</span>
+        </div>
+
+        <div class="roster-filters">
+            <input type="text" id="rosterSearchInput" class="roster-search-input" placeholder="Search name or student ID...">
+            <select id="rosterStatusFilter" class="roster-filter-select">
+                <option value="ALL">All statuses</option>
+                <option value="PRESENT">Present</option>
+                <option value="LATE">Late</option>
+                <option value="EXCUSED">Excused</option>
+                <option value="ABSENT">Absent</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="lec-table" id="rosterTable">
+            <thead>
+                <tr>
+                    <th>STUDENT</th>
+                    <th>STUDENT ID</th>
+                    <th>CHECK-IN</th>
+                    <th>SOURCE</th>
+                    <th>STATUS</th>
+                </tr>
+            </thead>
+            <tbody id="rosterTableBody">
+                {% if rec_list %}
+                    {% for rec in rec_list %}
+                        {% set st_upper = (rec.status or 'ABSENT')|upper %}
+                        {% set parts = (rec.fullname or rec.student_id).split(' ') %}
+                        {% set stu_init = (parts[0][0] ~ (parts[-1][0] if parts|length > 1 else ''))|upper %}
+                        <tr class="roster-row"
+                            data-record-id="{{ rec.record_id }}"
+                            data-student-id="{{ rec.student_id|lower }}"
+                            data-student-name="{{ (rec.fullname or '')|lower }}"
+                            data-status="{{ st_upper }}">
+                            <td>
+                                <div class="student-cell">
+                                    <div class="student-avatar-sm">{{ stu_init }}</div>
+                                    <span class="student-name-text">{{ rec.fullname }}</span>
+                                </div>
+                            </td>
+                            <td style="color: var(--text-secondary); font-variant-numeric: tabular-nums;">{{ rec.student_id }}</td>
+                            <td class="cell-check-time" style="color: var(--text-secondary); font-variant-numeric: tabular-nums;">
+                                {% if rec.check_time %}
+                                    {{ rec.check_time[11:16] if rec.check_time|length >= 16 else rec.check_time }}
+                                {% else %}
+                                    &mdash;
+                                {% endif %}
+                            </td>
+                            <td class="cell-source" style="color: var(--text-muted); font-size: 12.5px;">
+                                {% if st_upper == 'PRESENT' %}
+                                    PIN check-in
+                                {% elif st_upper in ['LATE', 'EXCUSED'] %}
+                                    Lecturer updated
+                                {% else %}
+                                    No check-in
+                                {% endif %}
+                            </td>
+                            <td>
+                                <form method="POST"
+                                      action="{{ url_for('attendance.update_record_manual', record_id=rec.record_id) }}"
+                                      class="manual-status-form">
+                                    <select name="status"
+                                            class="status-select status-{{ st_upper|lower }}"
+                                            data-record-id="{{ rec.record_id }}"
+                                            aria-label="Attendance status for {{ rec.fullname }}">
+                                        <option value="PRESENT" {% if st_upper == 'PRESENT' %}selected{% endif %}>Present</option>
+                                        <option value="LATE" {% if st_upper == 'LATE' %}selected{% endif %}>LATE</option>
+                                        <option value="EXCUSED" {% if st_upper == 'EXCUSED' %}selected{% endif %}>EXCUSED</option>
+                                        <option value="ABSENT" {% if st_upper == 'ABSENT' %}selected{% endif %}>ABSENT</option>
+                                    </select>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% elif enrolled_students %}
+                    {% for stu in enrolled_students %}
+                        {% set parts = (stu.fullname or stu.student_id).split(' ') %}
+                        {% set stu_init = (parts[0][0] ~ (parts[-1][0] if parts|length > 1 else ''))|upper %}
+                        <tr class="roster-row"
+                            data-student-id="{{ stu.student_id|lower }}"
+                            data-student-name="{{ (stu.fullname or '')|lower }}"
+                            data-status="ABSENT">
+                            <td>
+                                <div class="student-cell">
+                                    <div class="student-avatar-sm">{{ stu_init }}</div>
+                                    <span class="student-name-text">{{ stu.fullname }}</span>
+                                </div>
+                            </td>
+                            <td style="color: var(--text-secondary);">{{ stu.student_id }}</td>
+                            <td style="color: var(--text-secondary);">&mdash;</td>
+                            <td style="color: var(--text-muted); font-size: 12.5px;">Open a session to record</td>
+                            <td><span class="badge badge-danger">ABSENT</span></td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="5" style="text-align: center; padding: 32px; color: var(--text-muted);">
+                            No students enrolled in this course section yet.
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="roster-footer">
+        <span id="rosterShowingText">
+            Showing 1–{{ (rec_list|length) or (enrolled_students|length) }} of {{ (rec_list|length) or (enrolled_students|length) }} students &middot; Status changes save automatically
+        </span>
+        <span>Page 1 / 1</span>
+    </div>
+</div>
+
+<!-- Projector Fullscreen Modal -->
+{% if sel_sess %}
+<div class="projector-modal" id="projectorModal">
+    <div class="projector-card">
+        <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.1em; color: #C7CCF8; text-transform: uppercase;">
+            {{ cur_sec.course_id }} &middot; {{ cur_sec.section_name }} &middot; {{ cur_sec.room or 'Room TBA' }}
+        </div>
+        <h2 style="font-size: 26px; font-weight: 700; margin-top: 6px;">{{ cur_sec.course_name }}</h2>
+        <div class="projector-pin-digits" id="projectorPinCode">{{ sel_sess.pin_code or '------' }}</div>
+        <p style="font-size: 15px; color: #C2C7D6; margin-bottom: 24px;">
+            Open Attendly on your phone and enter this PIN to mark PRESENT.
+        </p>
+        <button type="button" class="btn btn-outline" id="closeProjectorBtn" style="background: rgba(255,255,255,0.1); color: #FFF; border-color: rgba(255,255,255,0.25);">
+            Close projector view
+        </button>
+    </div>
+</div>
+{% endif %}
+
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/pin_timer.js') }}"></script>
+{% endblock %}
