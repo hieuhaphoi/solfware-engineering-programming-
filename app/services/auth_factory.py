@@ -3,7 +3,7 @@ from typing import Optional
 
 import bcrypt
 from flask import flash, jsonify, redirect, request, session, url_for
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, select
 
 from app.extensions.database import db
 from app.models import Admin, Lecturer, Student, User
@@ -41,28 +41,61 @@ class AuthFactory:
     def get_dashboard_url(cls, role: str) -> str:
         return cls.DASHBOARD_URLS.get((role or "").strip().lower(), "/")
 
-    @staticmethod
-    def get_profile_id(user: User) -> Optional[int]:
-        """Resolve role-specific profile ID if a matching profile record exists."""
-        role = (getattr(user, "role", "") or "").strip().lower()
+    @classmethod
+    def resolve_user_role_and_profile(cls, user: User) -> tuple[str, Optional[str], str]:
+        """
+        Resolve (role, profile_id, fullname) for a User by checking role tables
+        (Admins, Lecturers, Students) or direct model attributes.
+        """
         uid = getattr(user, "user_id", getattr(user, "id", None))
-        model_map = {
-            "admin": (Admin, "admin_id"),
-            "lecturer": (Lecturer, "lecturer_id"),
-            "student": (Student, "student_id"),
-        }
-        if role not in model_map or uid is None:
-            return None
+        default_name = getattr(user, "fullname", None) or getattr(user, "username", "")
 
-        model, pk_attr = model_map[role]
-        try:
-            if hasattr(model, "user_id"):
-                record = model.query.filter_by(user_id=uid).first()
-                if record:
-                    return getattr(record, pk_attr, getattr(record, "id", uid))
-        except Exception:
-            return None
-        return None
+        if isinstance(user, Admin):
+            return "admin", getattr(user, "admin_id", None), default_name
+        if isinstance(user, Lecturer):
+            return "lecturer", getattr(user, "lecturer_id", None), getattr(user, "fullname", default_name)
+        if isinstance(user, Student):
+            return "student", getattr(user, "student_id", None), getattr(user, "fullname", default_name)
+
+        if uid is not None:
+            try:
+                admin_row = db.session.execute(
+                    select(Admin.__table__.c.adminid).where(Admin.__table__.c.userid == uid)
+                ).first()
+                if admin_row:
+                    return "admin", admin_row[0], default_name
+
+                lecturer_row = db.session.execute(
+                    select(Lecturer.__table__.c.lecturerid, Lecturer.__table__.c.fullname).where(
+                        Lecturer.__table__.c.userid == uid
+                    )
+                ).first()
+                if lecturer_row:
+                    return "lecturer", lecturer_row[0], lecturer_row[1] or default_name
+
+                student_row = db.session.execute(
+                    select(Student.__table__.c.studentid, Student.__table__.c.fullname).where(
+                        Student.__table__.c.userid == uid
+                    )
+                ).first()
+                if student_row:
+                    return "student", student_row[0], student_row[1] or default_name
+            except Exception:
+                pass
+
+        raw_role = (getattr(user, "role", "") or "").strip().lower()
+        if raw_role in ("admin", "administrator"):
+            return "admin", getattr(user, "admin_id", None), default_name
+        if raw_role in ("lecturer", "student"):
+            return raw_role, None, default_name
+
+        return "", None, default_name
+
+    @classmethod
+    def get_profile_id(cls, user: User) -> Optional[str]:
+        """Resolve role-specific profile ID if a matching profile record exists."""
+        _, profile_id, _ = cls.resolve_user_role_and_profile(user)
+        return profile_id
 
     @classmethod
     def authenticate(cls, identifier: str, password: str) -> tuple[Optional[dict], Optional[str], int]:
@@ -96,14 +129,15 @@ class AuthFactory:
         if not valid:
             return None, "Invalid username/email or password.", 401
 
-        role = (getattr(user, "role", "") or "").strip().lower()
+        role, profile_id, fullname = cls.resolve_user_role_and_profile(user)
         uid = getattr(user, "user_id", getattr(user, "id", None))
         session_data = {
             "user_id": uid,
             "username": user.username,
             "email": user.email,
+            "fullname": fullname,
             "role": role,
-            "profile_id": cls.get_profile_id(user),
+            "profile_id": profile_id,
             "dashboard_url": cls.get_dashboard_url(role),
         }
         return session_data, None, 200

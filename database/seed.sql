@@ -8,12 +8,12 @@ BEGIN;
 
 -- 1. Insert Base Users (1 Admin, 2 Lecturers, 3 Students)
 INSERT INTO Users (userID, username, email, password, status) VALUES
-    (1, 'jamie.lee', 'jamie.lee@westbridge.edu', '$2b$12$KIX/8k3x.9s5Y6q8O7z1Gu1Q2w3e4r5t6y7u8i9o0p1a2s3d4f5g6', 'Active'),
-    (2, 'maya.chen', 'maya.chen@westbridge.edu', '$2b$12$KIX/8k3x.9s5Y6q8O7z1Gu1Q2w3e4r5t6y7u8i9o0p1a2s3d4f5g6', 'Active'),
-    (3, 'elias.reed', 'elias.reed@westbridge.edu', '$2b$12$KIX/8k3x.9s5Y6q8O7z1Gu1Q2w3e4r5t6y7u8i9o0p1a2s3d4f5g6', 'Active'),
-    (4, 'alex.morgan', 'alex.morgan@westbridge.edu', '$2b$12$KIX/8k3x.9s5Y6q8O7z1Gu1Q2w3e4r5t6y7u8i9o0p1a2s3d4f5g6', 'Active'),
-    (5, 'jordan.lee', 'jordan.lee@westbridge.edu', '$2b$12$KIX/8k3x.9s5Y6q8O7z1Gu1Q2w3e4r5t6y7u8i9o0p1a2s3d4f5g6', 'Active'),
-    (6, 'samira.patel', 'samira.patel@westbridge.edu', '$2b$12$KIX/8k3x.9s5Y6q8O7z1Gu1Q2w3e4r5t6y7u8i9o0p1a2s3d4f5g6', 'Active');
+    (1, 'jamie.lee', 'jamie.lee@westbridge.edu', '$2b$12$zOihdBuK6LPvep/KmYtucOqAp90haRRNuUO3unVWFbijU2Lyg.LyS', 'Active'),
+    (2, 'maya.chen', 'maya.chen@westbridge.edu', '$2b$12$zOihdBuK6LPvep/KmYtucOqAp90haRRNuUO3unVWFbijU2Lyg.LyS', 'Active'),
+    (3, 'elias.reed', 'elias.reed@westbridge.edu', '$2b$12$zOihdBuK6LPvep/KmYtucOqAp90haRRNuUO3unVWFbijU2Lyg.LyS', 'Active'),
+    (4, 'alex.morgan', 'alex.morgan@westbridge.edu', '$2b$12$zOihdBuK6LPvep/KmYtucOqAp90haRRNuUO3unVWFbijU2Lyg.LyS', 'Active'),
+    (5, 'jordan.lee', 'jordan.lee@westbridge.edu', '$2b$12$zOihdBuK6LPvep/KmYtucOqAp90haRRNuUO3unVWFbijU2Lyg.LyS', 'Active'),
+    (6, 'samira.patel', 'samira.patel@westbridge.edu', '$2b$12$zOihdBuK6LPvep/KmYtucOqAp90haRRNuUO3unVWFbijU2Lyg.LyS', 'Active');
 
 -- Synchronize BIGSERIAL sequence after explicit ID inserts
 SELECT setval(pg_get_serial_sequence('Users', 'userid'), (SELECT MAX(userID) FROM Users));
