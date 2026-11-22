@@ -360,12 +360,18 @@ def create_course():
 
     if not cid or not name or credits <= 0:
         return _reply(False, "Course ID, name, and positive credits are required.", 400, back, "danger")
+    if len(cid) > 50 or len(name) > 255:
+        return _reply(False, "Course ID (max 50) or name (max 255) is too long.", 400, back, "danger")
     if db.session.execute(db.select(Course.__table__.c.courseid).where(Course.__table__.c.courseid == cid)).scalar_one_or_none():
         return _reply(False, f"Course '{cid}' already exists.", 409, back, "danger")
 
     course = Course(course_id=cid, course_name=name, credits=credits)
-    db.session.add(course)
-    db.session.commit()
+    try:
+        db.session.add(course)
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return _reply(False, f"Could not create course '{cid}'.", 409, back, "danger")
     return _reply(True, f"Created course '{cid}'.", 201, back, "success", {"course": course.to_dict()})
 
 
@@ -379,7 +385,7 @@ def update_course(course_id):
 
     data = _get_data()
     if (data.get("course_name") or "").strip():
-        course.course_name = data["course_name"].strip()
+        course.course_name = data["course_name"].strip()[:255]
     if "credits" in data and str(data["credits"]).strip() != "":
         try:
             credits = int(data["credits"])
@@ -389,7 +395,11 @@ def update_course(course_id):
         except (TypeError, ValueError):
             return _reply(False, "Credits must be a positive integer.", 400, back, "danger")
 
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return _reply(False, f"Could not update course '{course.course_id}'.", 409, back, "danger")
     return _reply(True, f"Updated course '{course.course_id}'.", 200, back, "success", {"course": course.to_dict()})
 
 
@@ -468,6 +478,8 @@ def create_section():
 
     if not sid or not cid or not name or not semester:
         return _reply(False, "Section ID, course, name, and semester are required.", 400, back, "danger")
+    if len(sid) > 50 or len(semester) > 50 or (room and len(room) > 50) or len(name) > 255:
+        return _reply(False, "Field length exceeded maximum allowed characters.", 400, back, "danger")
     if db.session.execute(db.select(CourseSection.__table__.c.sectionid).where(CourseSection.__table__.c.sectionid == sid)).scalar_one_or_none():
         return _reply(False, f"Section '{sid}' already exists.", 409, back, "danger")
     if not db.session.execute(db.select(Course.__table__.c.courseid).where(Course.__table__.c.courseid == cid)).scalar_one_or_none():
@@ -476,8 +488,12 @@ def create_section():
         return _reply(False, f"Lecturer '{lid}' not found.", 404, back, "danger")
 
     section = CourseSection(section_id=sid, course_id=cid, lecturer_id=lid, section_name=name, semester=semester, room=room)
-    db.session.add(section)
-    db.session.commit()
+    try:
+        db.session.add(section)
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return _reply(False, f"Could not create section '{sid}'.", 409, back, "danger")
     return _reply(True, f"Created section '{sid}'.", 201, back, "success", {"section": section.to_dict()})
 
 
@@ -501,13 +517,18 @@ def update_section(section_id):
             return _reply(False, f"Lecturer '{lid}' not found.", 404, back, "danger")
         section.lecturer_id = lid
     if data.get("section_name"):
-        section.section_name = str(data["section_name"]).strip()
+        section.section_name = str(data["section_name"]).strip()[:255]
     if data.get("semester"):
-        section.semester = str(data["semester"]).strip()
+        section.semester = str(data["semester"]).strip()[:50]
     if "room" in data:
-        section.room = (data.get("room") or "").strip() or None
+        room_val = (data.get("room") or "").strip()
+        section.room = room_val[:50] if room_val else None
 
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return _reply(False, f"Could not update section '{section.section_id}'.", 409, back, "danger")
     return _reply(True, f"Updated section '{section.section_id}'.", 200, back, "success", {"section": section.to_dict()})
 
 

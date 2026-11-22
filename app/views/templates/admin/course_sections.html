@@ -1,1 +1,436 @@
+{% extends "base.html" %}
 
+{% block title %}Course Sections & Enrollment · Attendly Admin{% endblock %}
+{% block breadcrumb %}Course Sections{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+{% endblock %}
+
+{% block content %}
+{% set f = filters if filters is defined else {} %}
+{% set section_list = sections if sections is defined else [] %}
+{% set course_list = courses if courses is defined else [] %}
+{% set lecturer_list = lecturers if lecturers is defined else [] %}
+{% set student_list = students if students is defined else [] %}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Course sections &amp; enrollments</h1>
+        <p class="page-subtitle">Open semester sections, assign teaching lecturers, and enroll students manually or via CSV.</p>
+    </div>
+    <div class="page-header-actions">
+        <a href="{{ url_for('admin.download_student_csv_template') }}" class="btn btn-outline btn-sm">
+            &darr; CSV Template
+        </a>
+        <button type="button" class="btn btn-primary btn-sm" onclick="openModal('createSectionModal')">
+            + Open New Section
+        </button>
+    </div>
+</div>
+
+<!-- Filter Toolbar -->
+<div class="admin-toolbar">
+    <form method="GET" action="{{ url_for('admin.list_sections') }}" class="filter-form">
+        <input
+            type="text"
+            name="q"
+            class="filter-input"
+            placeholder="Search section ID, name, or room..."
+            value="{{ f.get('q', '') }}"
+        >
+        <input
+            type="text"
+            name="semester"
+            class="filter-input"
+            style="min-width: 140px; max-width: 170px;"
+            placeholder="Semester (e.g. Fall 2026)"
+            value="{{ f.get('semester', '') }}"
+        >
+        <select name="course_id" class="filter-select">
+            <option value="">All courses</option>
+            {% for c in course_list %}
+            <option value="{{ c.course_id }}" {% if f.get('course_id') == c.course_id %}selected{% endif %}>
+                {{ c.course_id }} · {{ c.course_name }}
+            </option>
+            {% endfor %}
+        </select>
+        <select name="lecturer_id" class="filter-select">
+            <option value="">All lecturers</option>
+            {% for l in lecturer_list %}
+            <option value="{{ l.lecturer_id }}" {% if f.get('lecturer_id') == l.lecturer_id %}selected{% endif %}>
+                {{ l.fullname }} ({{ l.lecturer_id }})
+            </option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+        {% if f.get('q') or f.get('semester') or f.get('course_id') or f.get('lecturer_id') %}
+        <a href="{{ url_for('admin.list_sections') }}" class="btn btn-outline btn-sm">Reset</a>
+        {% endif %}
+    </form>
+</div>
+
+<!-- Sections Table -->
+<div class="card-panel">
+    <div class="panel-header">
+        <div>
+            <div class="panel-title">Opened Course Sections ({{ section_list|length }})</div>
+            <div class="panel-subtitle">Manage lecturer assignments and enrolled student rosters per section.</div>
+        </div>
+    </div>
+
+    {% if section_list %}
+    <div class="table-responsive">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Section ID</th>
+                    <th>Section Name</th>
+                    <th>Course</th>
+                    <th>Assigned Lecturer</th>
+                    <th>Semester &amp; Room</th>
+                    <th>Enrolled Students</th>
+                    <th style="text-align: right;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for sec in section_list %}
+                <tr>
+                    <td><span class="code-pill">{{ sec.section_id }}</span></td>
+                    <td><strong>{{ sec.section_name }}</strong></td>
+                    <td>
+                        <strong>{{ sec.course_id }}</strong>
+                        {% if sec.course %}
+                        <div style="font-size: 12px; color: var(--text-secondary);">{{ sec.course.course_name }}</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if sec.lecturer %}
+                            <div style="font-weight: 600;">{{ sec.lecturer.fullname }}</div>
+                            <div style="font-size: 11.5px; color: var(--text-muted);">{{ sec.lecturer_id }}</div>
+                        {% elif sec.lecturer_id %}
+                            <span>{{ sec.lecturer_id }}</span>
+                        {% else %}
+                            <span class="badge badge-warning">Unassigned</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div>{{ sec.semester }}</div>
+                        <div style="font-size: 12px; color: var(--text-secondary);">{{ sec.room or 'TBA' }}</div>
+                    </td>
+                    <td>
+                        {% set enroll_count = sec.enrollments|length if sec.enrollments is defined else 0 %}
+                        <span class="badge badge-info">{{ enroll_count }} student(s)</span>
+                    </td>
+                    <td>
+                        <div class="table-actions">
+                            <button
+                                type="button"
+                                class="btn btn-success-outline btn-xs"
+                                data-section-id="{{ sec.section_id }}"
+                                data-section-name="{{ sec.section_name }}"
+                                onclick="openRosterModal(this)"
+                            >
+                                Roster / Enroll ({{ enroll_count }})
+                            </button>
+                            <button
+                                type="button"
+                                class="btn btn-outline btn-xs"
+                                data-section-id="{{ sec.section_id }}"
+                                data-course-id="{{ sec.course_id }}"
+                                data-lecturer-id="{{ sec.lecturer_id or '' }}"
+                                data-section-name="{{ sec.section_name }}"
+                                data-semester="{{ sec.semester }}"
+                                data-room="{{ sec.room or '' }}"
+                                onclick="openEditSectionModal(this)"
+                            >
+                                Edit
+                            </button>
+                            <form
+                                method="POST"
+                                action="{{ url_for('admin.delete_section', section_id=sec.section_id) }}"
+                                class="inline-form"
+                                onsubmit="return confirm('Delete section {{ sec.section_id }}?');"
+                            >
+                                <button type="submit" class="btn btn-danger-outline btn-xs">Delete</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-title">No course sections found</div>
+        <div class="empty-state-desc">Click "+ Open New Section" to create a course section for the semester.</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Bulk CSV Student Roster Import Panel -->
+<div class="card-panel" id="csv-import-panel">
+    <div class="panel-header">
+        <div>
+            <div class="panel-title">Bulk Import &amp; Enroll Students via CSV</div>
+            <div class="panel-subtitle">Upload an Excel/CSV student roster to automatically create student accounts and enroll them into a section.</div>
+        </div>
+        <a href="{{ url_for('admin.download_student_csv_template') }}" class="btn btn-outline btn-xs">
+            &darr; Download CSV Template
+        </a>
+    </div>
+
+    <form method="POST" action="{{ url_for('admin.import_students_csv') }}" enctype="multipart/form-data">
+        <div class="form-row-3">
+            <div class="form-group">
+                <label class="form-label">Select Target Section (Optional)</label>
+                <select name="section_id" class="form-control">
+                    <option value="">-- Use section_id column in CSV (or none) --</option>
+                    {% for sec in section_list %}
+                    <option value="{{ sec.section_id }}">{{ sec.section_id }} · {{ sec.section_name }} ({{ sec.semester }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">CSV File (.csv) *</label>
+                <input type="file" name="file" accept=".csv" class="form-control" style="padding-top: 8px;" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Default New Student Password</label>
+                <input type="text" name="default_password" class="form-control" value="Student@123">
+            </div>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+            <span class="form-hint">
+                Accepted headers: <code>student_id</code> (or <code>mssv</code>), <code>fullname</code> (or <code>ho_ten</code>), <code>email</code>, <code>phone</code>, <code>username</code>, <code>password</code>, <code>section_id</code>.
+            </span>
+            <button type="submit" class="btn btn-primary btn-sm">&uarr; Upload &amp; Enroll CSV</button>
+        </div>
+    </form>
+</div>
+
+<!-- Modal: Create Course Section -->
+<div class="modal-backdrop" id="createSectionModal">
+    <div class="modal-dialog">
+        <div class="modal-header">
+            <h3 class="modal-title">Open New Course Section</h3>
+            <button type="button" class="modal-close" onclick="closeModal('createSectionModal')">&times;</button>
+        </div>
+        <form method="POST" action="{{ url_for('admin.create_section') }}">
+            <div class="form-row-2">
+                <div class="form-group">
+                    <label class="form-label">Section ID *</label>
+                    <input type="text" name="section_id" class="form-control" maxlength="50" placeholder="e.g. CS201-A" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Section Name *</label>
+                    <input type="text" name="section_name" class="form-control" maxlength="255" placeholder="e.g. Section A" required>
+                </div>
+            </div>
+
+            <div class="form-row-2">
+                <div class="form-group">
+                    <label class="form-label">Course *</label>
+                    <select name="course_id" class="form-control" required>
+                        <option value="">-- Select course --</option>
+                        {% for c in course_list %}
+                        <option value="{{ c.course_id }}">{{ c.course_id }} · {{ c.course_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Assigned Lecturer</label>
+                    <select name="lecturer_id" class="form-control">
+                        <option value="">-- Unassigned --</option>
+                        {% for l in lecturer_list %}
+                        <option value="{{ l.lecturer_id }}">{{ l.fullname }} ({{ l.lecturer_id }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row-2">
+                <div class="form-group">
+                    <label class="form-label">Semester *</label>
+                    <input type="text" name="semester" class="form-control" maxlength="50" value="Fall 2026" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Classroom / Room</label>
+                    <input type="text" name="room" class="form-control" maxlength="50" placeholder="e.g. Room B-204">
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline btn-sm" onclick="closeModal('createSectionModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary btn-sm">Create Section</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Edit Course Section -->
+<div class="modal-backdrop" id="editSectionModal">
+    <div class="modal-dialog">
+        <div class="modal-header">
+            <h3 class="modal-title" id="editSectionModalTitle">Edit Course Section</h3>
+            <button type="button" class="modal-close" onclick="closeModal('editSectionModal')">&times;</button>
+        </div>
+        <form method="POST" id="editSectionForm" action="">
+            <div class="form-row-2">
+                <div class="form-group">
+                    <label class="form-label">Section Name *</label>
+                    <input type="text" name="section_name" id="editSectionName" class="form-control" maxlength="255" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Course *</label>
+                    <select name="course_id" id="editSectionCourse" class="form-control" required>
+                        {% for c in course_list %}
+                        <option value="{{ c.course_id }}">{{ c.course_id }} · {{ c.course_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row-2">
+                <div class="form-group">
+                    <label class="form-label">Assigned Lecturer</label>
+                    <select name="lecturer_id" id="editSectionLecturer" class="form-control">
+                        <option value="">-- Unassigned --</option>
+                        {% for l in lecturer_list %}
+                        <option value="{{ l.lecturer_id }}">{{ l.fullname }} ({{ l.lecturer_id }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Semester *</label>
+                    <input type="text" name="semester" id="editSectionSemester" class="form-control" maxlength="50" required>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Classroom / Room</label>
+                <input type="text" name="room" id="editSectionRoom" class="form-control" maxlength="50">
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline btn-sm" onclick="closeModal('editSectionModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary btn-sm">Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Section Roster & Student Enrollment -->
+<div class="modal-backdrop" id="rosterModal">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-header">
+            <h3 class="modal-title" id="rosterModalTitle">Section Roster &amp; Enrollment</h3>
+            <button type="button" class="modal-close" onclick="closeModal('rosterModal')">&times;</button>
+        </div>
+
+        <!-- Enroll Existing Students Form -->
+        <form method="POST" id="enrollStudentsForm" action="" style="margin-bottom: 18px;">
+            <label class="form-label">Select students to enroll into this section:</label>
+            {% if student_list %}
+            <div class="student-checklist">
+                {% for st in student_list %}
+                <div class="student-check-item">
+                    <label class="student-check-label">
+                        <input type="checkbox" name="student_ids" value="{{ st.student_id }}">
+                        <span><strong>{{ st.student_id }}</strong> · {{ st.fullname }}</span>
+                    </label>
+                    <span style="font-size: 11.5px; color: var(--text-muted);">{{ st.email }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            <div style="display: flex; justify-content: flex-end; margin-top: 10px;">
+                <button type="submit" class="btn btn-primary btn-sm">+ Enroll Selected Students</button>
+            </div>
+            {% else %}
+            <div class="form-hint">No students in directory yet. Import students via CSV or create them in Users tab.</div>
+            {% endif %}
+        </form>
+
+        <!-- Current Enrolled Students List (Loaded dynamically from GET /admin/sections/<id>/enrollments) -->
+        <div>
+            <div class="form-label" style="margin-bottom: 8px;">Currently Enrolled Students</div>
+            <div id="rosterListContainer" class="table-responsive">
+                <div class="empty-state" style="padding: 16px;">Loading roster...</div>
+            </div>
+        </div>
+
+        <div class="modal-footer">
+            <button type="button" class="btn btn-outline btn-sm" onclick="closeModal('rosterModal')">Close</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function openModal(id) {
+    const el = document.getElementById(id);
+    if (el) el.classList.add("open");
+}
+
+function closeModal(id) {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove("open");
+}
+
+function openEditSectionModal(btn) {
+    const sid = btn.getAttribute("data-section-id");
+    document.getElementById("editSectionForm").action = "/admin/sections/" + encodeURIComponent(sid) + "/update";
+    document.getElementById("editSectionModalTitle").textContent = "Edit Section · " + sid;
+    document.getElementById("editSectionName").value = btn.getAttribute("data-section-name") || "";
+    document.getElementById("editSectionCourse").value = btn.getAttribute("data-course-id") || "";
+    document.getElementById("editSectionLecturer").value = btn.getAttribute("data-lecturer-id") || "";
+    document.getElementById("editSectionSemester").value = btn.getAttribute("data-semester") || "";
+    document.getElementById("editSectionRoom").value = btn.getAttribute("data-room") || "";
+    openModal("editSectionModal");
+}
+
+async function openRosterModal(btn) {
+    const sid = btn.getAttribute("data-section-id");
+    const sname = btn.getAttribute("data-section-name");
+    document.getElementById("rosterModalTitle").textContent = "Roster · " + sid + " (" + sname + ")";
+    document.getElementById("enrollStudentsForm").action = "/admin/sections/" + encodeURIComponent(sid) + "/enroll";
+
+    const container = document.getElementById("rosterListContainer");
+    container.innerHTML = '<div class="empty-state" style="padding:16px;">Loading enrolled students...</div>';
+    openModal("rosterModal");
+
+    try {
+        const res = await fetch("/admin/sections/" + encodeURIComponent(sid) + "/enrollments", {
+            headers: { "Accept": "application/json" }
+        });
+        const data = await res.json();
+        const items = data.enrollments || [];
+        if (!items.length) {
+            container.innerHTML = '<div class="empty-state" style="padding:16px;">No students enrolled in this section yet.</div>';
+            return;
+        }
+        let html = '<table class="admin-table"><thead><tr><th>Student ID</th><th>Full Name</th><th>Email</th><th>Enroll Date</th><th style="text-align:right;">Action</th></tr></thead><tbody>';
+        for (const e of items) {
+            const removeUrl = "/admin/sections/" + encodeURIComponent(sid) + "/enrollments/" + encodeURIComponent(e.student_id) + "/delete";
+            html += `<tr>
+                <td><span class="code-pill">${e.student_id}</span></td>
+                <td><strong>${e.student_name || "—"}</strong></td>
+                <td>${e.student_email || "—"}</td>
+                <td>${e.enroll_date || "—"}</td>
+                <td style="text-align:right;">
+                    <form method="POST" action="${removeUrl}" class="inline-form">
+                        <button type="submit" class="btn btn-danger-outline btn-xs">Remove</button>
+                    </form>
+                </td>
+            </tr>`;
+        }
+        html += "</tbody></table>";
+        container.innerHTML = html;
+    } catch (err) {
+        container.innerHTML = '<div class="empty-state" style="padding:16px;">Could not load enrollments.</div>';
+    }
+}
+</script>
+{% endblock %}

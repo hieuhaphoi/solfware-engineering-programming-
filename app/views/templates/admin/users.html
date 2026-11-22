@@ -1,1 +1,368 @@
+{% extends "base.html" %}
 
+{% block title %}Users Management · Attendly Admin{% endblock %}
+{% block breadcrumb %}Users{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+{% endblock %}
+
+{% block content %}
+{% set f = filters if filters is defined else {} %}
+{% set user_list = users if users is defined else [] %}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">User directory &amp; accounts</h1>
+        <p class="page-subtitle">Manage administrators, lecturers, and students or bulk-import student accounts from CSV.</p>
+    </div>
+    <div class="page-header-actions">
+        <a href="{{ url_for('admin.download_student_csv_template') }}" class="btn btn-outline btn-sm">
+            &darr; Student CSV Template
+        </a>
+        <button type="button" class="btn btn-outline btn-sm" onclick="openModal('csvImportModal')">
+            &uarr; Import Students CSV
+        </button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="openModal('createUserModal')">
+            + New User
+        </button>
+    </div>
+</div>
+
+<!-- Role Summary Cards -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-label">Total accounts</div>
+        <div class="stat-value">{{ user_list|length }}</div>
+        <div class="stat-meta">Matching current filter criteria</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Administrators</div>
+        <div class="stat-value">{{ admins|length if admins is defined else 0 }}</div>
+        <div class="stat-meta">System &amp; academic admins</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Lecturers</div>
+        <div class="stat-value">{{ lecturers|length if lecturers is defined else 0 }}</div>
+        <div class="stat-meta">Teaching faculty members</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Students</div>
+        <div class="stat-value">{{ students|length if students is defined else 0 }}</div>
+        <div class="stat-meta">Enrolled student accounts</div>
+    </div>
+</div>
+
+<!-- Filter & Search Bar -->
+<div class="admin-toolbar">
+    <form method="GET" action="{{ url_for('admin.list_users') }}" class="filter-form">
+        <input
+            type="text"
+            name="q"
+            class="filter-input"
+            placeholder="Search by name, username, email, ID..."
+            value="{{ f.get('q', '') }}"
+        >
+        <select name="role" class="filter-select">
+            <option value="">All roles</option>
+            <option value="admin" {% if f.get('role') == 'admin' %}selected{% endif %}>Administrator</option>
+            <option value="lecturer" {% if f.get('role') == 'lecturer' %}selected{% endif %}>Lecturer</option>
+            <option value="student" {% if f.get('role') == 'student' %}selected{% endif %}>Student</option>
+        </select>
+        <select name="status" class="filter-select">
+            <option value="">All statuses</option>
+            <option value="Active" {% if f.get('status') == 'Active' %}selected{% endif %}>Active</option>
+            <option value="Locked" {% if f.get('status') == 'Locked' %}selected{% endif %}>Locked</option>
+            <option value="Pending" {% if f.get('status') == 'Pending' %}selected{% endif %}>Pending</option>
+        </select>
+        <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+        {% if f.get('q') or f.get('role') or f.get('status') %}
+        <a href="{{ url_for('admin.list_users') }}" class="btn btn-outline btn-sm">Reset</a>
+        {% endif %}
+    </form>
+</div>
+
+<!-- Users Table -->
+<div class="card-panel">
+    <div class="panel-header">
+        <div>
+            <div class="panel-title">System Users ({{ user_list|length }})</div>
+            <div class="panel-subtitle">Click Edit to update account details or Toggle to lock/unlock access.</div>
+        </div>
+    </div>
+
+    {% if user_list %}
+    <div class="table-responsive">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Profile ID</th>
+                    <th>Full Name / Title</th>
+                    <th>Username &amp; Email</th>
+                    <th>Role</th>
+                    <th>Phone</th>
+                    <th>Status</th>
+                    <th style="text-align: right;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in user_list %}
+                <tr>
+                    <td>
+                        <span class="code-pill">{{ u.profile_id or ('U-' ~ u.user_id) }}</span>
+                    </td>
+                    <td>
+                        <strong>{{ u.fullname }}</strong>
+                    </td>
+                    <td>
+                        <div style="font-weight: 600;">{{ u.username }}</div>
+                        <div style="font-size: 12px; color: var(--text-secondary);">{{ u.email }}</div>
+                    </td>
+                    <td>
+                        <span class="role-badge role-{{ u.role }}">{{ u.role }}</span>
+                    </td>
+                    <td>
+                        <span style="font-size: 12.5px; color: var(--text-secondary);">{{ u.phone or '—' }}</span>
+                    </td>
+                    <td>
+                        {% if (u.status or '')|lower == 'active' %}
+                            <span class="badge badge-success">Active</span>
+                        {% elif (u.status or '')|lower == 'pending' %}
+                            <span class="badge badge-warning">Pending</span>
+                        {% else %}
+                            <span class="badge badge-danger">Locked</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="table-actions">
+                            <button
+                                type="button"
+                                class="btn btn-outline btn-xs"
+                                data-user-id="{{ u.user_id }}"
+                                data-username="{{ u.username }}"
+                                data-fullname="{{ u.fullname }}"
+                                data-email="{{ u.email }}"
+                                data-role="{{ u.role }}"
+                                data-phone="{{ u.phone or '' }}"
+                                data-status="{{ u.status }}"
+                                onclick="openEditUserModal(this)"
+                            >
+                                Edit
+                            </button>
+
+                            {% if session.get('user_id') != u.user_id %}
+                            <form method="POST" action="{{ url_for('admin.toggle_user_status', user_id=u.user_id) }}" class="inline-form">
+                                <button type="submit" class="btn btn-outline btn-xs">
+                                    {{ 'Lock' if (u.status or '')|lower == 'active' else 'Unlock' }}
+                                </button>
+                            </form>
+
+                            <form
+                                method="POST"
+                                action="{{ url_for('admin.delete_user', user_id=u.user_id) }}"
+                                class="inline-form"
+                                onsubmit="return confirm('Delete user {{ u.username }}?');"
+                            >
+                                <button type="submit" class="btn btn-danger-outline btn-xs">Delete</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-title">No users found</div>
+        <div class="empty-state-desc">Try clearing filters or create a new user account.</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Modal: Create New User -->
+<div class="modal-backdrop" id="createUserModal">
+    <div class="modal-dialog">
+        <div class="modal-header">
+            <h3 class="modal-title">Create New User</h3>
+            <button type="button" class="modal-close" onclick="closeModal('createUserModal')">&times;</button>
+        </div>
+        <form method="POST" action="{{ url_for('admin.create_user') }}">
+            <div class="form-row-2">
+                <div class="form-group">
+                    <label class="form-label">Role *</label>
+                    <select name="role" id="createRoleSelect" class="form-control" onchange="toggleCreateRoleFields()" required>
+                        <option value="student">Student</option>
+                        <option value="lecturer">Lecturer</option>
+                        <option value="admin">Administrator</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Profile ID (Optional)</label>
+                    <input type="text" name="profile_id" class="form-control" maxlength="50" placeholder="Auto-generated if blank">
+                </div>
+            </div>
+
+            <div class="form-row-2">
+                <div class="form-group">
+                    <label class="form-label">Username *</label>
+                    <input type="text" name="username" class="form-control" maxlength="50" placeholder="e.g. alex.morgan" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Email *</label>
+                    <input type="email" name="email" class="form-control" maxlength="50" placeholder="user@westbridge.edu" required>
+                </div>
+            </div>
+
+            <div class="form-row-2">
+                <div class="form-group">
+                    <label class="form-label">Full Name</label>
+                    <input type="text" name="fullname" class="form-control" maxlength="255" placeholder="e.g. Alex Morgan">
+                </div>
+                <div class="form-group" id="createPhoneGroup">
+                    <label class="form-label">Phone (Student, max 11 digits)</label>
+                    <input type="text" name="phone" class="form-control" maxlength="15" placeholder="0901234567">
+                </div>
+            </div>
+
+            <div class="form-row-2">
+                <div class="form-group">
+                    <label class="form-label">Initial Password *</label>
+                    <input type="password" name="password" class="form-control" placeholder="Enter password" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Account Status</label>
+                    <select name="status" class="form-control">
+                        <option value="Active">Active</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Locked">Locked</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline btn-sm" onclick="closeModal('createUserModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary btn-sm">Create User</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Edit User -->
+<div class="modal-backdrop" id="editUserModal">
+    <div class="modal-dialog">
+        <div class="modal-header">
+            <h3 class="modal-title" id="editUserModalTitle">Edit User</h3>
+            <button type="button" class="modal-close" onclick="closeModal('editUserModal')">&times;</button>
+        </div>
+        <form method="POST" id="editUserForm" action="">
+            <div class="form-row-2">
+                <div class="form-group">
+                    <label class="form-label">Full Name</label>
+                    <input type="text" name="fullname" id="editFullname" class="form-control" maxlength="255">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Email *</label>
+                    <input type="email" name="email" id="editEmail" class="form-control" maxlength="50" required>
+                </div>
+            </div>
+
+            <div class="form-row-2">
+                <div class="form-group">
+                    <label class="form-label">Phone (Student)</label>
+                    <input type="text" name="phone" id="editPhone" class="form-control" maxlength="15" placeholder="0901234567">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Status</label>
+                    <select name="status" id="editStatus" class="form-control">
+                        <option value="Active">Active</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Locked">Locked</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">New Password (leave blank to keep current)</label>
+                <input type="password" name="password" class="form-control" placeholder="Enter new password to reset">
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline btn-sm" onclick="closeModal('editUserModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary btn-sm">Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Import Students CSV -->
+<div class="modal-backdrop" id="csvImportModal">
+    <div class="modal-dialog">
+        <div class="modal-header">
+            <h3 class="modal-title">Import Students from CSV</h3>
+            <button type="button" class="modal-close" onclick="closeModal('csvImportModal')">&times;</button>
+        </div>
+        <form method="POST" action="{{ url_for('admin.import_students_csv') }}" enctype="multipart/form-data">
+            <div class="form-group">
+                <label class="form-label">CSV File (.csv) *</label>
+                <input type="file" name="file" accept=".csv" class="form-control" style="padding-top: 8px;" required>
+                <div class="form-hint">
+                    Supported columns: <code>student_id</code>, <code>fullname</code>, <code>email</code>, <code>phone</code>, <code>username</code>, <code>password</code>, <code>section_id</code> (optional).
+                </div>
+            </div>
+
+            <div class="form-row-2">
+                <div class="form-group">
+                    <label class="form-label">Target Section ID (Optional)</label>
+                    <input type="text" name="section_id" class="form-control" placeholder="e.g. CS201-A">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Default Password</label>
+                    <input type="text" name="default_password" class="form-control" value="Student@123">
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <a href="{{ url_for('admin.download_student_csv_template') }}" class="btn btn-outline btn-sm">&darr; Download Template</a>
+                <button type="button" class="btn btn-outline btn-sm" onclick="closeModal('csvImportModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary btn-sm">Upload &amp; Import</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function openModal(id) {
+    const el = document.getElementById(id);
+    if (el) el.classList.add("open");
+}
+
+function closeModal(id) {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove("open");
+}
+
+function toggleCreateRoleFields() {
+    const role = document.getElementById("createRoleSelect").value;
+    const phoneGroup = document.getElementById("createPhoneGroup");
+    if (phoneGroup) {
+        phoneGroup.style.opacity = role === "student" ? "1" : "0.5";
+    }
+}
+
+function openEditUserModal(btn) {
+    const uid = btn.getAttribute("data-user-id");
+    const username = btn.getAttribute("data-username");
+    document.getElementById("editUserForm").action = "/admin/users/" + uid + "/update";
+    document.getElementById("editUserModalTitle").textContent = "Edit User · " + username;
+    document.getElementById("editFullname").value = btn.getAttribute("data-fullname") || "";
+    document.getElementById("editEmail").value = btn.getAttribute("data-email") || "";
+    document.getElementById("editPhone").value = btn.getAttribute("data-phone") || "";
+    document.getElementById("editStatus").value = btn.getAttribute("data-status") || "Active";
+    openModal("editUserModal");
+}
+</script>
+{% endblock %}

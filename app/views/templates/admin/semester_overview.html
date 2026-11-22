@@ -1,50 +1,216 @@
 {% extends "base.html" %}
 
 {% block title %}Semester Overview · Attendly Admin{% endblock %}
-{% block breadcrumb %}Overview{% endblock %}
+{% block breadcrumb %}Semester Overview{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+{% endblock %}
 
 {% block content %}
+{% set s = stats if stats is defined else {} %}
+{% set course_list = courses if courses is defined else [] %}
+{% set section_list = sections if sections is defined else [] %}
+
 <div class="page-header">
     <div>
         <h1 class="page-title">Semester initialization</h1>
         <p class="page-subtitle">Create courses, open sections, assign lecturers, and import enrolled students before the semester begins.</p>
     </div>
-    <div>
+    <div class="page-header-actions">
         <span class="badge badge-info">Fall 2026</span>
+        <a href="{{ url_for('admin.download_student_csv_template') }}" class="btn btn-outline btn-sm">
+            &darr; CSV Template
+        </a>
+        <a href="{{ url_for('admin.list_sections') }}" class="btn btn-primary btn-sm">
+            + Open Course Section
+        </a>
     </div>
 </div>
 
+<!-- Key Semester Metrics -->
 <div class="stats-grid">
     <div class="stat-card">
         <div class="stat-label">Courses created</div>
-        <div class="stat-value">4</div>
+        <div class="stat-value">{{ s.get('total_courses', 4) }}</div>
         <div class="stat-meta">Across academic departments</div>
     </div>
     <div class="stat-card">
         <div class="stat-label">Course sections opened</div>
-        <div class="stat-value">3</div>
-        <div class="stat-meta">All sections assigned</div>
+        <div class="stat-value">{{ s.get('total_sections', 3) }}</div>
+        <div class="stat-meta">Active semester offerings</div>
     </div>
     <div class="stat-card">
-        <div class="stat-label">Lecturers assigned</div>
-        <div class="stat-value">2</div>
-        <div class="stat-meta">Dr. Maya Chen, Dr. Elias Reed</div>
+        <div class="stat-label">Lecturers &amp; Admins</div>
+        <div class="stat-value">{{ s.get('total_lecturers', 2) }}</div>
+        <div class="stat-meta">{{ s.get('total_admins', 1) }} administrator(s) &middot; {{ s.get('total_users', 6) }} total users</div>
     </div>
     <div class="stat-card">
-        <div class="stat-label">Students imported</div>
-        <div class="stat-value">3</div>
-        <div class="stat-meta">Enrolled across active sections</div>
+        <div class="stat-label">Students &amp; Enrollments</div>
+        <div class="stat-value">{{ s.get('total_students', 3) }}</div>
+        <div class="stat-meta">{{ s.get('total_enrollments', 5) }} active section enrollment(s)</div>
     </div>
 </div>
 
+<!-- 4-Step Semester Initialization Workflow (Section I.2.2) -->
+<div class="workflow-steps">
+    <div class="workflow-step-card">
+        <div>
+            <span class="step-number">1</span>
+            <div class="step-title">Manage Users</div>
+            <p class="step-desc">Create accounts for administrators, lecturers, and students or import student lists via CSV.</p>
+        </div>
+        <a href="{{ url_for('admin.list_users') }}" class="btn btn-outline btn-sm">Manage Users &rarr;</a>
+    </div>
+
+    <div class="workflow-step-card">
+        <div>
+            <span class="step-number">2</span>
+            <div class="step-title">Course Catalog</div>
+            <p class="step-desc">Define academic courses, course codes, and credit hours for the curriculum.</p>
+        </div>
+        <a href="{{ url_for('admin.list_courses') }}" class="btn btn-outline btn-sm">Course Catalog &rarr;</a>
+    </div>
+
+    <div class="workflow-step-card">
+        <div>
+            <span class="step-number">3</span>
+            <div class="step-title">Open Course Sections</div>
+            <p class="step-desc">Open semester sections, assign teaching lecturers, and allocate classrooms.</p>
+        </div>
+        <a href="{{ url_for('admin.list_sections') }}" class="btn btn-outline btn-sm">Course Sections &rarr;</a>
+    </div>
+
+    <div class="workflow-step-card">
+        <div>
+            <span class="step-number">4</span>
+            <div class="step-title">Enroll Students (CSV)</div>
+            <p class="step-desc">Bulk-enroll students into specific course sections by uploading an Excel/CSV roster.</p>
+        </div>
+        <a href="{{ url_for('admin.list_sections') }}#csv-import-panel" class="btn btn-outline btn-sm">Import Roster &rarr;</a>
+    </div>
+</div>
+
+<!-- Recent Course Sections & Courses Overview -->
+<div class="admin-grid-2col">
+    <!-- Active Course Sections -->
+    <div class="card-panel" style="margin-bottom: 0;">
+        <div class="panel-header">
+            <div>
+                <div class="panel-title">Recent Course Sections</div>
+                <div class="panel-subtitle">Sections opened for current semester</div>
+            </div>
+            <a href="{{ url_for('admin.list_sections') }}" class="btn btn-outline btn-xs">View all</a>
+        </div>
+
+        {% if section_list %}
+        <div class="table-responsive">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>Section</th>
+                        <th>Course</th>
+                        <th>Lecturer</th>
+                        <th>Semester / Room</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sec in section_list %}
+                    <tr>
+                        <td>
+                            <span class="code-pill">{{ sec.section_id }}</span>
+                            <div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">{{ sec.section_name }}</div>
+                        </td>
+                        <td>
+                            <strong>{{ sec.course_id }}</strong>
+                            {% if sec.course %}
+                            <div style="font-size: 12px; color: var(--text-secondary);">{{ sec.course.course_name }}</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if sec.lecturer %}
+                                {{ sec.lecturer.fullname }}
+                            {% elif sec.lecturer_id %}
+                                {{ sec.lecturer_id }}
+                            {% else %}
+                                <span class="badge badge-warning">Unassigned</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div>{{ sec.semester }}</div>
+                            <div style="font-size: 11.5px; color: var(--text-muted);">{{ sec.room or 'TBA' }}</div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <div class="empty-state-title">No course sections opened yet</div>
+            <div class="empty-state-desc">Open your first section in the Course Sections tab.</div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Course Catalog Snapshot -->
+    <div class="card-panel" style="margin-bottom: 0;">
+        <div class="panel-header">
+            <div>
+                <div class="panel-title">Course Catalog</div>
+                <div class="panel-subtitle">Registered academic courses</div>
+            </div>
+            <a href="{{ url_for('admin.list_courses') }}" class="btn btn-outline btn-xs">Manage catalog</a>
+        </div>
+
+        {% if course_list %}
+        <div class="table-responsive">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>Course ID</th>
+                        <th>Course Name</th>
+                        <th>Credits</th>
+                        <th>Sections</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in course_list %}
+                    <tr>
+                        <td><span class="code-pill">{{ c.course_id }}</span></td>
+                        <td><strong>{{ c.course_name }}</strong></td>
+                        <td>{{ c.credits }} TC</td>
+                        <td>
+                            <span class="badge badge-info">{{ c.sections|length if c.sections is defined else 0 }} section(s)</span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <div class="empty-state-title">No courses in catalog</div>
+            <div class="empty-state-desc">Create courses before opening semester sections.</div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Administrator Profile Card -->
 <div class="card-panel">
-    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
         <div>
             <span class="badge badge-success">Authenticated as Administrator</span>
             <h2 style="font-size: 17px; font-weight: 700; margin-top: 8px;">Welcome, {{ session.get('fullname') or session.get('username') }}</h2>
             <p style="font-size: 13px; color: var(--text-secondary); margin-top: 2px;">
                 Admin ID: <strong>{{ session.get('profile_id') or 'A-1001' }}</strong> &middot; Email: {{ session.get('email') }}
             </p>
+        </div>
+        <div class="page-header-actions">
+            <a href="{{ url_for('admin.list_users') }}" class="btn btn-outline btn-sm">User Directory</a>
+            <a href="{{ url_for('admin.list_courses') }}" class="btn btn-outline btn-sm">Course Catalog</a>
+            <a href="{{ url_for('admin.list_sections') }}" class="btn btn-primary btn-sm">Course Sections</a>
         </div>
     </div>
 </div>

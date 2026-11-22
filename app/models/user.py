@@ -5,12 +5,12 @@ from app.extensions.database import db
 class User(db.Model):
     """Base user account model (supports Joined Table Inheritance)."""
 
-    VALID_STATUSES = ("ACTIVE", "INACTIVE", "LOCKED", "Active", "Inactive", "Locked")
+    VALID_STATUSES = ("ACTIVE", "INACTIVE", "LOCKED", "PENDING", "Active", "Inactive", "Locked", "Pending")
 
     __tablename__ = "users"
     __table_args__ = (
         db.CheckConstraint(
-            "UPPER(status) IN ('ACTIVE', 'INACTIVE', 'LOCKED')",
+            "UPPER(status) IN ('ACTIVE', 'INACTIVE', 'LOCKED', 'PENDING')",
             name="ck_users_status",
         ),
     )
