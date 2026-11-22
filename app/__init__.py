@@ -35,14 +35,11 @@ def create_app(config_class=Config) -> Flask:
     )
     app.config.from_object(config_class)
 
-    # Initialize extensions
     db.init_app(app)
 
-    # Load all SQLAlchemy models into metadata without shadowing `app`
     with app.app_context():
         importlib.import_module("app.models")
 
-    # Register blueprints
     _register_blueprints(app)
 
     @app.route("/")
