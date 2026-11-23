@@ -566,3 +566,32 @@ class EmailService:
 
 
 email_service = EmailService()
+
+
+# --- Module-level helpers for direct imports (e.g., from app.services import email_service) ---
+
+def send_password_reset_email(
+    to_email: str,
+    reset_link_or_code: str,
+    username: Optional[str] = None,
+) -> bool:
+    """Module-level wrapper compatible with auth_controller.py reset_password flow."""
+    res = EmailService.send_password_reset_email(
+        to_email=to_email,
+        reset_link_or_code=reset_link_or_code,
+        username=username,
+    )
+    return bool(res.get("sent") or res.get("mode") == "dry_run")
+
+
+def send_absence_warning(student_id: str, section_id: str, **kwargs: Any) -> Dict[str, Any]:
+    return EmailService.send_absence_warning(student_id=student_id, section_id=section_id, **kwargs)
+
+
+def check_and_warn_section(section_id: str, **kwargs: Any) -> Dict[str, Any]:
+    return EmailService.check_and_warn_section(section_id=section_id, **kwargs)
+
+
+def check_and_warn_session(session_id: int, **kwargs: Any) -> Dict[str, Any]:
+    return EmailService.check_and_warn_session(session_id=session_id, **kwargs)
+

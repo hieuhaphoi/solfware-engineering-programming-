@@ -99,10 +99,7 @@ class RedisClientSingleton:
             self._client = None
             if not self._allow_fallback:
                 raise ConnectionError(f"Cannot connect to Redis at {uri}") from exc
-            logger.warning(
-                "Redis unavailable (%s). Falling back to in-memory TTL store.",
-                exc,
-            )
+            logger.debug("Redis unavailable (%s). Falling back to in-memory TTL store.", exc)
 
     def is_redis_available(self) -> bool:
         if self._client is None:

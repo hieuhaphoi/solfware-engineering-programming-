@@ -1,11 +1,13 @@
 from datetime import datetime
 
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, session, url_for
+from flask import Blueprint, Response, flash, jsonify, redirect, render_template, request, session, url_for
 from sqlalchemy import func
 
 from app.extensions.database import db
 from app.models import AttendanceRecord, AttendanceSession, Course, CourseSection, Enrollment, Lecturer, Student, User
 from app.services.auth_factory import role_required
+from app.services.email_service import EmailService
+from app.services.report_service import ReportService
 
 lecturer_bp = Blueprint("lecturer", __name__, url_prefix="/lecturer")
 
@@ -448,3 +450,154 @@ def session_records_api(session_id):
         "summary": _summarize_records(records),
         "records": records,
     }), 200
+
+
+# --- Báo cáo thống kê điểm danh cuối kỳ & Gửi Email cảnh báo vắng học ---
+
+@lecturer_bp.route("/reports", methods=["GET"])
+@lecturer_bp.route("/sections/<string:section_id>/reports", methods=["GET"])
+@role_required("lecturer")
+def section_reports(section_id=None):
+    lecturer_id = _current_lecturer_id()
+    if not lecturer_id:
+        if _wants_json():
+            return jsonify({"success": False, "message": "Lecturer profile not found."}), 404
+        flash("Lecturer profile not found.", "danger")
+        return redirect(url_for("auth.login"))
+
+    sections = (
+        CourseSection.query.filter_by(lecturer_id=lecturer_id)
+        .order_by(CourseSection.semester.desc(), CourseSection.section_id.asc())
+        .all()
+    )
+    course_map = _get_course_map([s.course_id for s in sections])
+    sec_list = [
+        {
+            **s.to_dict(),
+            "course_name": course_map.get(s.course_id, {}).get("course_name", s.course_id),
+        }
+        for s in sections
+    ]
+
+    if not sections:
+        if _wants_json():
+            return jsonify({"success": True, "sections": [], "report": None}), 200
+        return render_template(
+            "lecturer/reports.html",
+            sections=[],
+            current_section=None,
+            report=None,
+            smtp_configured=EmailService.is_smtp_configured(),
+        )
+
+    target_sec_id = (section_id or request.args.get("section_id") or "").strip()
+    current_sec = next((s for s in sections if s.section_id == target_sec_id), None) if target_sec_id else sections[0]
+    if not current_sec:
+        if _wants_json():
+            return jsonify({"success": False, "message": "Section not found or not assigned to you."}), 403
+        flash("You do not have access to this course section.", "danger")
+        return redirect(url_for("lecturer.section_reports"))
+
+    report = ReportService.get_section_report(current_sec.section_id)
+
+    if _wants_json():
+        return jsonify({
+            "success": True,
+            "sections": sec_list,
+            "current_section": report["section"] if report else current_sec.to_dict(),
+            "report": report,
+            "smtp_configured": EmailService.is_smtp_configured(),
+        }), 200
+
+    return render_template(
+        "lecturer/reports.html",
+        sections=sec_list,
+        current_section=report["section"] if report else current_sec.to_dict(),
+        report=report,
+        smtp_configured=EmailService.is_smtp_configured(),
+    )
+
+
+@lecturer_bp.route("/reports/export", methods=["GET"])
+@lecturer_bp.route("/sections/<string:section_id>/reports/export", methods=["GET"])
+@role_required("lecturer")
+def export_section_report(section_id=None):
+    lecturer_id = _current_lecturer_id()
+    target_sec_id = (section_id or request.args.get("section_id") or "").strip()
+
+    if not target_sec_id:
+        first_sec = CourseSection.query.filter_by(lecturer_id=lecturer_id).first()
+        target_sec_id = first_sec.section_id if first_sec else ""
+
+    sec = CourseSection.query.filter_by(section_id=target_sec_id, lecturer_id=lecturer_id).first()
+    if not sec:
+        if _wants_json():
+            return jsonify({"success": False, "message": "Course section not found."}), 404
+        flash("Course section not found or not assigned to you.", "danger")
+        return redirect(url_for("lecturer.section_reports"))
+
+    csv_content = ReportService.export_section_csv(sec.section_id, include_sessions=True)
+    filename = f"attendance_report_{sec.section_id}.csv"
+    return Response(
+        csv_content,
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@lecturer_bp.route("/sections/<string:section_id>/send-warnings", methods=["POST"])
+@role_required("lecturer")
+def send_section_warnings(section_id):
+    lecturer_id = _current_lecturer_id()
+    sec = CourseSection.query.filter_by(section_id=section_id, lecturer_id=lecturer_id).first()
+    if not sec:
+        if _wants_json():
+            return jsonify({"success": False, "message": "Course section not found."}), 404
+        flash("Course section not found or not assigned to you.", "danger")
+        return redirect(url_for("lecturer.section_reports"))
+
+    data = (request.get_json(silent=True) if request.is_json else request.form) or {}
+    student_id = (data.get("student_id") or "").strip()
+
+    if student_id:
+        res = EmailService.send_absence_warning(
+            student_id=student_id,
+            section_id=section_id,
+            force=True,
+        )
+        if not res.get("exceeded"):
+            msg = f"Student {student_id} is currently within the allowed absence limit."
+            cat = "info"
+        elif res.get("sent"):
+            msg = f"Sent attendance warning email to {res['stats']['student_email']}."
+            cat = "success"
+        elif res.get("mode") == "dry_run":
+            msg = f"Logged attendance warning for {res['stats']['student_name']} ({res['stats']['student_email']}) [SMTP dry-run mode]."
+            cat = "info"
+        else:
+            msg = f"Could not send warning email to {student_id}."
+            cat = "warning"
+
+        if _wants_json():
+            return jsonify({"success": True, "message": msg, "result": res}), 200
+        flash(msg, cat)
+        return redirect(url_for("lecturer.section_reports", section_id=section_id))
+
+    summary = EmailService.check_and_warn_section(section_id=section_id, force=True)
+    if summary["exceeded"] == 0:
+        msg = f"All {summary['checked']} students in {section_id} are currently on track (0 exceeded absence threshold)."
+        cat = "info"
+    elif summary["sent"] > 0:
+        msg = f"Sent {summary['sent']} attendance warning email(s) for {section_id}."
+        cat = "success"
+    elif summary["dry_run"] > 0:
+        msg = f"Processed {summary['dry_run']} attendance warning(s) for {section_id} (logged in SMTP dry-run mode)."
+        cat = "info"
+    else:
+        msg = f"Checked {summary['checked']} students: {summary['exceeded']} at risk."
+        cat = "warning"
+
+    if _wants_json():
+        return jsonify({"success": True, "message": msg, "summary": summary}), 200
+    flash(msg, cat)
+    return redirect(url_for("lecturer.section_reports", section_id=section_id))

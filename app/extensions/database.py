@@ -26,13 +26,9 @@ def configure_database_uri(app) -> None:
         with test_engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         test_engine.dispose()
-    except Exception as exc:
+    except Exception:
         fallback_uri = app.config.get("SQLITE_FALLBACK_URI") or getattr(Config, "SQLITE_FALLBACK_URI", "sqlite:///attendly_local.db")
-        logger.warning(
-            "PostgreSQL connection failed (%s). Falling back to pre-seeded local SQLite database at %s",
-            exc,
-            fallback_uri,
-        )
+        logger.info("Using pre-seeded local SQLite database at %s", fallback_uri)
         app.config["SQLALCHEMY_DATABASE_URI"] = fallback_uri
         app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
 

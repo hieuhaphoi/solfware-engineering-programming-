@@ -6,8 +6,10 @@ from flask import Blueprint, current_app, flash, jsonify, redirect, request, ses
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions.database import db
+from app.extensions.websocket import realtime_hub
 from app.models import AttendanceRecord, AttendanceSession, CourseSection, Enrollment, Lecturer, Student
 from app.services.auth_factory import login_required, role_required
+from app.services.email_service import EmailService
 from app.services.session_manager import PINError, SessionManager, session_manager
 
 attendance_bp = Blueprint("attendance", __name__, url_prefix="/attendance")
@@ -176,13 +178,19 @@ def open_session():
         absent_created = _create_default_absent_records(sess.session_id, section_id)
         db.session.commit()
 
+        pin_payload = {k: v for k, v in pin_info.items() if k != "expires_at_dt"}
+        realtime_hub.broadcast_attendance_event(
+            "session_opened",
+            session_id=sess.session_id,
+            section_id=section_id,
+            payload={"session": sess.to_dict(), "pin": pin_payload},
+        )
+
         payload = {
             "success": True,
             "message": f"Attendance session opened for {section_id}. PIN {pin_info['pin_code']} is active.",
             "session": sess.to_dict(),
-            "pin": {
-                k: v for k, v in pin_info.items() if k != "expires_at_dt"
-            },
+            "pin": pin_payload,
             "absent_records_created": absent_created,
         }
         if _wants_json():
@@ -237,13 +245,19 @@ def regenerate_pin(session_id: int):
         sess.end_time = pin_info["expires_at_dt"]
         db.session.commit()
 
+        pin_payload = {k: v for k, v in pin_info.items() if k != "expires_at_dt"}
+        realtime_hub.broadcast_attendance_event(
+            "pin_regenerated",
+            session_id=sess.session_id,
+            section_id=sess.section_id,
+            payload={"pin": pin_payload},
+        )
+
         payload = {
             "success": True,
             "message": f"New PIN generated: {pin_info['pin_code']}",
             "session_id": sess.session_id,
-            "pin": {
-                k: v for k, v in pin_info.items() if k != "expires_at_dt"
-            },
+            "pin": pin_payload,
         }
         if _wants_json():
             return jsonify(payload), 200
@@ -281,9 +295,28 @@ def close_session(session_id: int):
         sess.end_time = _now_naive()
         db.session.commit()
 
+        realtime_hub.broadcast_attendance_event(
+            "session_closed",
+            session_id=sess.session_id,
+            section_id=sess.section_id,
+            payload={"is_open": False, "remaining_seconds": 0},
+        )
+
+        # Automatically check and warn students in this section who exceeded absence threshold
+        warning_summary = None
+        try:
+            warning_summary = EmailService.check_and_warn_session(sess.session_id)
+        except Exception:
+            warning_summary = None
+
         msg = f"Attendance session #{sess.session_id} has been closed."
         if _wants_json():
-            return jsonify({"success": True, "message": msg, "session_id": sess.session_id}), 200
+            return jsonify({
+                "success": True,
+                "message": msg,
+                "session_id": sess.session_id,
+                "warnings": warning_summary,
+            }), 200
         flash(msg, "info")
         return redirect(request.referrer or url_for("lecturer.assigned_sections"))
 
@@ -412,6 +445,13 @@ def submit_pin_checkin():
         record.update_status("PRESENT", check_time=now)
         db.session.commit()
 
+        realtime_hub.broadcast_attendance_event(
+            "student_checked_in",
+            session_id=sess.session_id,
+            section_id=sess.section_id,
+            payload={"record": record.to_dict(), "source": "PIN check-in"},
+        )
+
         msg = f"Check-in confirmed! Marked PRESENT for {sess.section_id}."
         if _wants_json():
             return jsonify(
@@ -464,6 +504,25 @@ def update_record_manual(record_id: int):
     try:
         record.update_status(new_status, check_time=_now_naive() if new_status in ("PRESENT", "LATE") else None)
         db.session.commit()
+
+        realtime_hub.broadcast_attendance_event(
+            "record_status_updated",
+            session_id=record.session_id,
+            section_id=section.section_id,
+            payload={
+                "record": record.to_dict(),
+                "source": "No check-in" if new_status == "ABSENT" else "Lecturer updated",
+            },
+        )
+
+        if new_status == "ABSENT":
+            try:
+                EmailService.send_absence_warning(
+                    student_id=record.student_id,
+                    section_id=section.section_id,
+                )
+            except Exception:
+                pass
 
         msg = f"Updated student {record.student_id} status to {new_status}."
         if _wants_json():

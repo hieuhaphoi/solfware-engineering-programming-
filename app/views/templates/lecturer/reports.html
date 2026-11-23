@@ -1,1 +1,304 @@
+{% extends "base.html" %}
 
+{% block title %}Section Reports · Attendly Lecturer{% endblock %}
+{% block breadcrumb %}Section reports{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/lecturer.css') }}">
+{% endblock %}
+
+{% block content %}
+{% set sec_list = sections if sections is defined else [] %}
+{% set cur_sec = current_section if current_section is defined and current_section else None %}
+{% set rep = report if report is defined and report else None %}
+{% set ov = rep.overview if rep and rep.overview is defined else {} %}
+{% set stu_list = rep.students if rep and rep.students is defined else [] %}
+{% set meet_list = rep.meetings if rep and rep.meetings is defined else [] %}
+
+{% if not cur_sec %}
+    <div class="card-panel" style="text-align: center; padding: 48px 24px;">
+        <h2 class="page-title" style="font-size: 20px;">No course sections assigned</h2>
+        <p class="page-subtitle" style="margin-top: 6px;">You do not have any course sections assigned for attendance reporting yet.</p>
+        <a href="{{ url_for('lecturer.assigned_sections') }}" class="btn btn-primary" style="margin-top: 16px;">&larr; Back to My sections</a>
+    </div>
+{% else %}
+
+<!-- Page Header & Export Actions -->
+<div class="att-header-top">
+    <div>
+        <h1 class="page-title">{{ cur_sec.course_name }}</h1>
+        <p class="page-subtitle">
+            {{ cur_sec.course_id }} &middot; {{ cur_sec.section_name }} &middot; {{ cur_sec.semester }} &middot; {{ cur_sec.room or 'Room TBA' }}
+        </p>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+        {% if sec_list|length > 1 %}
+        <select class="semester-select" onchange="window.location.href='/lecturer/sections/' + this.value + '/reports'">
+            {% for s in sec_list %}
+                <option value="{{ s.section_id }}" {% if s.section_id == cur_sec.section_id %}selected{% endif %}>
+                    {{ s.course_id }} · {{ s.section_name }} ({{ s.course_name }})
+                </option>
+            {% endfor %}
+        </select>
+        {% endif %}
+
+        <form method="POST" action="{{ url_for('lecturer.send_section_warnings', section_id=cur_sec.section_id) }}" style="display: inline;">
+            <button type="submit" class="btn btn-outline" style="height: 36px; padding: 0 14px; font-size: 12.5px;">
+                &#9993; Send absence warnings ({{ ov.get('at_risk_students', 0) }})
+            </button>
+        </form>
+
+        <a href="{{ url_for('lecturer.export_section_report', section_id=cur_sec.section_id) }}" class="btn btn-primary" style="height: 36px; padding: 0 14px; font-size: 12.5px;">
+            &darr; Export CSV report
+        </a>
+    </div>
+</div>
+
+<!-- Sub-navigation Tabs -->
+<div class="att-subnav-bar">
+    <div class="att-tabs">
+        <a href="{{ url_for('lecturer.class_attendance', section_id=cur_sec.section_id) }}" class="att-tab">Class attendance</a>
+        <a href="{{ url_for('lecturer.section_reports', section_id=cur_sec.section_id) }}" class="att-tab active">Section reports</a>
+        <a href="#semester-student-matrix" class="att-tab">Students ({{ ov.get('enrolled_students', 0) }})</a>
+    </div>
+
+    <div style="font-size: 12px; color: var(--text-muted);">
+        Minimum attendance policy: <strong>{{ ov.get('min_attendance_percent', 80.0) }}%</strong>
+        (warning threshold &ge; {{ ov.get('warning_threshold_percent', 20.0) }}% unexcused absences)
+    </div>
+</div>
+
+<!-- 4 Summary Metric Cards -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-label">Average attendance</div>
+        <div class="stat-value">{{ ov.get('average_attendance', 100.0) }}%</div>
+        <div class="stat-meta">Across {{ ov.get('total_sessions', 0) }} completed meeting(s)</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Completed meetings</div>
+        <div class="stat-value">{{ ov.get('total_sessions', 0) }}</div>
+        <div class="stat-meta">{{ ov.get('present_total', 0) }} Present &middot; {{ ov.get('late_total', 0) }} Late &middot; {{ ov.get('excused_total', 0) }} Excused</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Students on track</div>
+        <div class="stat-value" style="color: var(--success-text);">{{ ov.get('on_track_students', 0) }}</div>
+        <div class="stat-meta">Meeting &ge; {{ ov.get('min_attendance_percent', 80.0) }}% requirement</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">At-risk students</div>
+        <div class="stat-value" style="color: {{ 'var(--danger-text)' if ov.get('at_risk_students', 0) > 0 else 'var(--text-main)' }};">
+            {{ ov.get('at_risk_students', 0) }}
+        </div>
+        <div class="stat-meta">Exceeded {{ ov.get('warning_threshold_percent', 20.0) }}% absence limit</div>
+    </div>
+</div>
+
+<!-- End-of-Semester Student Attendance Matrix -->
+<div class="roster-card" id="semester-student-matrix" style="margin-bottom: 24px;">
+    <div class="roster-card-header">
+        <div class="roster-title-group">
+            <h3 class="roster-title">End-of-semester student summary</h3>
+            <span class="roster-count-pill">{{ stu_list|length }} enrolled</span>
+        </div>
+
+        <div class="roster-filters">
+            <input type="text" id="reportSearchInput" class="roster-search-input" placeholder="Search name, ID, or email...">
+            <select id="reportStandingFilter" class="roster-filter-select">
+                <option value="ALL">All standings</option>
+                <option value="ON_TRACK">On track (&ge; 80%)</option>
+                <option value="WARNING">At risk (Warning)</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="lec-table">
+            <thead>
+                <tr>
+                    <th>STUDENT</th>
+                    <th>STUDENT ID</th>
+                    <th>PRESENT</th>
+                    <th>LATE</th>
+                    <th>EXCUSED</th>
+                    <th>ABSENT</th>
+                    <th>ATTENDANCE RATE</th>
+                    <th>STANDING</th>
+                    <th style="text-align: right;">ACTION</th>
+                </tr>
+            </thead>
+            <tbody id="reportStudentsBody">
+                {% if stu_list %}
+                    {% for stu in stu_list %}
+                        {% set parts = (stu.fullname or stu.student_id).split(' ') %}
+                        {% set stu_init = (parts[0][0] ~ (parts[-1][0] if parts|length > 1 else ''))|upper %}
+                        <tr class="report-student-row"
+                            data-query="{{ (stu.fullname ~ ' ' ~ stu.student_id ~ ' ' ~ (stu.email or ''))|lower }}"
+                            data-standing="{{ 'WARNING' if stu.is_at_risk else 'ON_TRACK' }}">
+                            <td>
+                                <div class="student-cell">
+                                    <div class="student-avatar-sm">{{ stu_init }}</div>
+                                    <div>
+                                        <div class="student-name-text">{{ stu.fullname }}</div>
+                                        <div style="font-size: 11.5px; color: var(--text-muted);">{{ stu.email or '' }}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td style="color: var(--text-secondary); font-variant-numeric: tabular-nums;">{{ stu.student_id }}</td>
+                            <td style="font-weight: 600; color: var(--success-text);">{{ stu.present }}</td>
+                            <td style="font-weight: 600; color: var(--warning-text);">{{ stu.late }}</td>
+                            <td style="font-weight: 600; color: var(--primary);">{{ stu.excused }}</td>
+                            <td style="font-weight: 600; color: {{ 'var(--danger-text)' if stu.absent > 0 else 'var(--text-secondary)' }};">
+                                {{ stu.absent }} / {{ stu.total_sessions }}
+                            </td>
+                            <td>
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <div style="width: 72px; height: 6px; background: var(--bg-subtle); border-radius: 999px; overflow: hidden;">
+                                        <div style="height: 100%; width: {{ stu.attendance_rate }}%; background: {{ 'var(--danger-text)' if stu.is_at_risk else 'var(--primary)' }};"></div>
+                                    </div>
+                                    <span style="font-weight: 700;">{{ stu.attendance_rate }}%</span>
+                                </div>
+                            </td>
+                            <td>
+                                {% if stu.is_at_risk %}
+                                    <span class="badge badge-danger">Warning ({{ stu.absence_rate }}% absent)</span>
+                                {% else %}
+                                    <span class="badge badge-success">On track</span>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: right;">
+                                {% if stu.is_at_risk %}
+                                    <form method="POST" action="{{ url_for('lecturer.send_section_warnings', section_id=cur_sec.section_id) }}" style="display: inline;">
+                                        <input type="hidden" name="student_id" value="{{ stu.student_id }}">
+                                        <button type="submit" class="btn btn-outline" style="height: 28px; padding: 0 10px; font-size: 11.5px;">
+                                            &#9993; Send warning
+                                        </button>
+                                    </form>
+                                {% else %}
+                                    <span style="font-size: 12px; color: var(--text-muted);">&mdash;</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="9" style="text-align: center; padding: 32px; color: var(--text-muted);">
+                            No students enrolled in this course section yet.
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="roster-footer">
+        <span>Exporting CSV includes per-meeting columns (M1..MN) for final gradebook submission.</span>
+        <a href="{{ url_for('lecturer.export_section_report', section_id=cur_sec.section_id) }}" style="font-weight: 600;">
+            &darr; Download CSV ({{ cur_sec.section_id }})
+        </a>
+    </div>
+</div>
+
+<!-- Meeting-by-Meeting Breakdown -->
+<div class="roster-card">
+    <div class="roster-card-header">
+        <div class="roster-title-group">
+            <h3 class="roster-title">Class meetings log</h3>
+            <span class="roster-count-pill">{{ meet_list|length }} sessions</span>
+        </div>
+        <a href="{{ url_for('lecturer.class_attendance', section_id=cur_sec.section_id) }}" class="open-sec-link">
+            Go to live attendance &rarr;
+        </a>
+    </div>
+
+    <div class="table-responsive">
+        <table class="lec-table">
+            <thead>
+                <tr>
+                    <th>MEETING</th>
+                    <th>DATE &amp; TIME</th>
+                    <th>PRESENT</th>
+                    <th>LATE</th>
+                    <th>EXCUSED</th>
+                    <th>ABSENT</th>
+                    <th>ATTENDANCE RATE</th>
+                    <th style="text-align: right;">WORKSPACE</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if meet_list %}
+                    {% for m in meet_list %}
+                    <tr>
+                        <td style="font-weight: 700;">Meeting {{ m.meeting_number }}</td>
+                        <td style="color: var(--text-secondary);">
+                            {{ m.session_date or '—' }}
+                            {% if m.start_time %}
+                                &middot; {{ m.start_time[11:16] }}
+                            {% endif %}
+                        </td>
+                        <td style="color: var(--success-text); font-weight: 600;">{{ m.present }}</td>
+                        <td style="color: var(--warning-text); font-weight: 600;">{{ m.late }}</td>
+                        <td style="color: var(--primary); font-weight: 600;">{{ m.excused }}</td>
+                        <td style="color: var(--danger-text); font-weight: 600;">{{ m.absent }}</td>
+                        <td><strong>{{ m.attendance_rate }}%</strong></td>
+                        <td style="text-align: right;">
+                            <a href="{{ url_for('lecturer.class_attendance', section_id=cur_sec.section_id, session_id=m.session_id) }}" class="open-sec-link">
+                                View roster &rarr;
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="8" style="text-align: center; padding: 28px; color: var(--text-muted);">
+                            No attendance sessions have been opened for this section yet.
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Info Footer Bar -->
+<div class="info-note-bar" style="margin-top: 18px;">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="16" x2="12" y2="12"></line>
+        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+    </svg>
+    <span>
+        Automated absence warning emails are triggered when a session closes or can be sent manually above.
+        {% if not smtp_configured %}
+            (SMTP credentials not configured in .env — running in safe dry-run logging mode).
+        {% endif %}
+    </span>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const searchInput = document.getElementById("reportSearchInput");
+    const standingFilter = document.getElementById("reportStandingFilter");
+    const rows = document.querySelectorAll(".report-student-row");
+
+    function filterReportRows() {
+        const q = (searchInput ? searchInput.value : "").trim().toLowerCase();
+        const st = standingFilter ? standingFilter.value : "ALL";
+
+        rows.forEach((row) => {
+            const matchQ = !q || (row.dataset.query || "").includes(q);
+            const matchSt = st === "ALL" || row.dataset.standing === st;
+            row.style.display = matchQ && matchSt ? "" : "none";
+        });
+    }
+
+    if (searchInput) searchInput.addEventListener("input", filterReportRows);
+    if (standingFilter) standingFilter.addEventListener("change", filterReportRows);
+});
+</script>
+{% endblock %}
