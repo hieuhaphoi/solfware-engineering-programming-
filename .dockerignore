@@ -1,0 +1,27 @@
+# Byte-compiled / cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Git & IDE metadata
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Local environment & SQLite fallback file
+.env
+*.log
+database/*.db
+database/*.sqlite3
+
+# Test & coverage artifacts
+.pytest_cache/
+htmlcov/
+.coverage

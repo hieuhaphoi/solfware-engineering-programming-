@@ -1,0 +1,69 @@
+# ============================================================================
+# Docker Compose - Student Attendance Management System (Web + PostgreSQL + Redis)
+# ============================================================================
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: attendly_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password123
+      POSTGRES_DB: student_attendance_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./database/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d student_attendance_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: attendly_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: attendly_web
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      FLASK_APP: run.py
+      FLASK_ENV: development
+      SECRET_KEY: attendly-docker-secret-key
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: student_attendance_db
+      DB_USER: postgres
+      DB_PASSWORD: password123
+      DATABASE_URL: postgresql+psycopg://postgres:password123@db:5432/student_attendance_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      REDIS_URL: redis://redis:6379/0
+      PIN_LENGTH: 6
+      PIN_TTL_SECONDS: 300
+      ABSENCE_WARNING_THRESHOLD: 0.20
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
